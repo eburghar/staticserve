@@ -1,3 +1,5 @@
+//! implement AsyncRead over actic_multipart::Field Stream trait
+
 use actix_multipart::Field;
 use actix_web::web::{Buf, Bytes};
 use futures::{
@@ -68,6 +70,7 @@ impl AsyncRead for FieldReader {
         // no available chunk so we have to poll the field's stream first
         } else {
             return match self.as_mut().project().field.poll_next(cx) {
+	            // stream data available so just write as much as possible and anounce readyness
                 Poll::Ready(Some(Ok(chunk))) => {
                     info!("received {} bytes", chunk.len());
                     match buf.write(chunk.bytes()) {
@@ -87,7 +90,8 @@ impl AsyncRead for FieldReader {
                         }
                     }
                 }
-                // normally unpack only request needed bytes, no we don't fall into this case
+                // normally unpack only request needed bytes by sizing buf to needed bytes,
+                // so we don't fall into this case
                 Poll::Ready(None) => {
                     debug!("end of stream");
                     Poll::Ready(Ok(0))
@@ -96,6 +100,8 @@ impl AsyncRead for FieldReader {
                     error!("error {:?}", err);
                     Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, "error")))
                 }
+                // poll_ready has already been scheduled again by field.poll_next at this point so
+                // return pending
                 Poll::Pending => Poll::Pending,
             };
         }
