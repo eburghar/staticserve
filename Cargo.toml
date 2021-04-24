@@ -12,7 +12,7 @@ actix-multipart = "0.3.0"
 actix-web = "3.3.0"
 anyhow = "1.0.34"
 argh = "0.1.4"
-#async-compression = { version="0.3.7", features=["tokio", "zstd"] }
+#async-compression = { version="0.3.7", features=["futures-io", "zstd"] }
 async-tar = "0.3.0"
 env_logger = "0.8.2"
 futures = "0.3.8"

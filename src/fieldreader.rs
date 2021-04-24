@@ -16,8 +16,6 @@ pin_project! {
         #[pin]
         field: Field,
         chunk: Option<Bytes>,
-        // start position in the chunk TODO: use a Cursor ?
-        pos: usize
     }
 }
 
@@ -26,7 +24,6 @@ impl FieldReader {
         FieldReader {
             field,
             chunk: None,
-            pos: 0,
         }
     }
 }
@@ -42,19 +39,17 @@ impl AsyncRead for FieldReader {
 		// take ownership of the chunk leaving a None in self.chunk
         let chunk = self.chunk.take();
 
-        // we already have an available chunk
-        if let Some(chunk) = chunk {
-            // fill buf with chunk data or just copy the remaining chunk bytes
-            let len = std::cmp::min(buf.len(), chunk.len() - self.pos);
-            let slice = chunk.slice(self.pos..self.pos + len);
+        // we already have a chunk available
+        if let Some(mut chunk) = chunk {
+	        // fill buf with as much chunk data or just copy the remaining chunk bytes
+            let len = std::cmp::min(buf.len(), chunk.remaining());
+            let slice = chunk.slice(..len);
             return match buf.write(slice.bytes()) {
                 Ok(len) => {
-                    debug!("wrote {} buffered bytes from {}", len, self.pos);
-                    self.pos += len;
-                    if self.pos == chunk.len() {
-                        debug!("Chunk has been consumed");
-                        self.pos = 0;
-                    } else {
+                    debug!("wrote {} buffered bytes", len);
+                    // advance the chunk by the number of written bytes
+                    chunk.advance(len);
+                    if chunk.remaining() != 0 {
                         // move back the chunk into the fieldreader
                         self.chunk = Some(chunk);
                         // immediately schedule a new poll_read as we still have some remaining data
@@ -71,16 +66,16 @@ impl AsyncRead for FieldReader {
         } else {
             return match self.as_mut().project().field.poll_next(cx) {
 	            // stream data available so just write as much as possible and anounce readyness
-                Poll::Ready(Some(Ok(chunk))) => {
+                Poll::Ready(Some(Ok(mut chunk))) => {
                     info!("received {} bytes", chunk.len());
                     match buf.write(chunk.bytes()) {
                         Ok(len) => {
                             debug!("wrote {} bytes", len);
                             // if some chunk data is remaining
                             if len < chunk.len() {
-	                            // move the chunk into the struct and advance pos
+	                            // advance the chunk and move it into the struct
+	                            chunk.advance(len);
 	                            self.chunk = Some(chunk);
-	                            self.pos = len;
                             }
                             Poll::Ready(Ok(len))
                         }
@@ -101,7 +96,7 @@ impl AsyncRead for FieldReader {
                     Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, "error")))
                 }
                 // poll_ready has already been scheduled again by field.poll_next at this point so
-                // return pending
+                // just return pending
                 Poll::Pending => Poll::Pending,
             };
         }
