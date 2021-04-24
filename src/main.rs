@@ -11,7 +11,7 @@ use async_tar::Archive;
 use futures::stream::TryStreamExt;
 use log::info;
 use sanitize_filename::sanitize;
-//use async_compression::futures::bufread::ZstdDecoder;
+use async_compression::futures::bufread::ZstdDecoder;
 
 #[post("/upload")]
 async fn upload(mut payload: Multipart) -> Result<HttpResponse, Error> {
@@ -26,9 +26,9 @@ async fn upload(mut payload: Multipart) -> Result<HttpResponse, Error> {
                         if sane_file.ends_with(".tar") {
                         	Archive::new(FieldReader::new(field)).unpack("archive").await?
                         }
-                        //else if sane_file.ends_with("tar.zst") {
-	                    //    Archive::new(ZstdDecoder::new(FieldReader::new(field))).unpack("archive").await?
-                        //}
+                        else if sane_file.ends_with("tar.zst") {
+	                        Archive::new(ZstdDecoder::new(FieldReader::new(field))).unpack("archive").await?
+                        }
                         //let archive = Archive::new(reader);
                         //archive.unpack("archive").await?;
                     }
