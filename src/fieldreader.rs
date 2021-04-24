@@ -1,4 +1,5 @@
-//! implement AsyncRead over actic_multipart::Field Stream trait
+//! implement AsyncRead over actix_multipart::Field (Stream).
+//! Code borrowed  from tokio_util::io::StreamReader
 
 use actix_multipart::Field;
 use actix_web::web::{Buf, Bytes};
@@ -7,7 +8,7 @@ use futures::{
     stream::Stream,
     task::{Context, Poll},
 };
-use log::{debug, error, info};
+use log::{debug, info};
 use pin_project_lite::pin_project;
 use std::{io::Write, pin::Pin};
 
@@ -42,70 +43,22 @@ impl AsyncRead for FieldReader {
     ) -> Poll<Result<usize, std::io::Error>> {
         debug!("poll_read into {} bytes", buf.len());
 
-        // take ownership of the chunk leaving a None in self.chunk
-        let chunk = self.chunk.take();
-
-        // we already have a chunk available
-        if let Some(mut chunk) = chunk {
-            // fill buf with as much chunk data or just copy the remaining chunk bytes
-            let len = std::cmp::min(buf.len(), chunk.remaining());
-            let slice = chunk.slice(..len);
-            return match buf.write(slice.bytes()) {
-                Ok(len) => {
-                    debug!("wrote {} buffered bytes", len);
-                    // advance the chunk by the number of written bytes
-                    chunk.advance(len);
-                    if chunk.has_remaining() {
-                        // move back the chunk into the fieldreader
-                        self.chunk = Some(chunk);
-                        // immediately schedule a new poll_read as we still have some remaining data
-                        cx.waker().clone().wake();
-                    }
-                    Poll::Ready(Ok(len))
-                }
-                Err(err) => {
-                    info!("error {:?}", err);
-                    Poll::Ready(Err(err))
-                }
-            };
-        // no available chunk so we have to poll the field's stream first
-        } else {
-            return match self.as_mut().project().field.poll_next(cx) {
-                // stream data available so just write as much as possible and anounce readyness
-                Poll::Ready(Some(Ok(mut chunk))) => {
-                    info!("received {} bytes", chunk.len());
-                    match buf.write(chunk.bytes()) {
-                        Ok(len) => {
-                            debug!("wrote {} bytes", len);
-                            // if some chunk data is remaining
-                            if len < chunk.len() {
-                                // advance the chunk and move it into the struct
-                                chunk.advance(len);
-                                self.chunk = Some(chunk);
-                            }
-                            Poll::Ready(Ok(len))
-                        }
-                        Err(err) => {
-                            error!("error {:?}", err);
-                            Poll::Ready(Err(err))
-                        }
-                    }
-                }
-                // normally unpack only request needed bytes by sizing buf to needed bytes,
-                // so we don't fall into this case
-                Poll::Ready(None) => {
-                    debug!("end of stream");
-                    Poll::Ready(Ok(0))
-                }
-                Poll::Ready(Some(Err(err))) => {
-                    error!("error {:?}", err);
-                    Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, "error")))
-                }
-                // poll_ready has already been scheduled again by field.poll_next at this point so
-                // just return pending
-                Poll::Pending => Poll::Pending,
-            };
-        }
+        let inner_buf = match self.as_mut().poll_fill_buf(cx) {
+            Poll::Ready(Ok(buf)) => buf,
+            Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+            Poll::Pending => return Poll::Pending,
+        };
+        let len = std::cmp::min(inner_buf.len(), inner_buf.remaining());
+        return match buf.write(&inner_buf[..len]) {
+            Ok(len) => {
+                debug!("consumed {} buffered bytes", len);
+                self.consume(len);
+                Poll::Ready(Ok(len))
+            }
+            Err(err) => {
+                Poll::Ready(Err(err))
+            }
+        };
     }
 }
 
@@ -117,12 +70,12 @@ impl AsyncBufRead for FieldReader {
         loop {
             if self.as_mut().has_chunk() {
                 // This unwrap is very sad, but it can't be avoided.
-                let buf = self.project().chunk.as_ref().unwrap().bytes();
-                return Poll::Ready(Ok(buf));
+                let buf = self.project().chunk.as_ref().unwrap();
+                return Poll::Ready(Ok(buf.bytes()));
             } else {
                 return match self.as_mut().project().field.poll_next(cx) {
                     Poll::Ready(Some(Ok(chunk))) => {
-                    	info!("received {} bytes", chunk.len());
+                        info!("received {} bytes from stream", &chunk.remaining());
                         // Go around the loop in case the chunk is empty.
                         *self.as_mut().project().chunk = Some(chunk);
                         continue;

@@ -7,11 +7,12 @@ use crate::{args::Opts, config::Config, fieldreader::FieldReader};
 use actix_files::Files;
 use actix_multipart::Multipart;
 use actix_web::{middleware::Logger, post, App, Error, HttpResponse, HttpServer};
+use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::stream::TryStreamExt;
 use log::info;
 use sanitize_filename::sanitize;
-use async_compression::futures::bufread::ZstdDecoder;
+use std::env;
 
 #[post("/upload")]
 async fn upload(mut payload: Multipart) -> Result<HttpResponse, Error> {
@@ -24,13 +25,14 @@ async fn upload(mut payload: Multipart) -> Result<HttpResponse, Error> {
                         let sane_file = sanitize(&filename);
                         info!("untar {}", sane_file);
                         if sane_file.ends_with(".tar") {
-                        	Archive::new(FieldReader::new(field)).unpack("archive").await?
+                            Archive::new(FieldReader::new(field))
+                                .unpack("archive")
+                                .await?
+                        } else if sane_file.ends_with("tar.zst") {
+                            Archive::new(ZstdDecoder::new(FieldReader::new(field)))
+                                .unpack("archive")
+                                .await?
                         }
-                        else if sane_file.ends_with("tar.zst") {
-	                        Archive::new(ZstdDecoder::new(FieldReader::new(field))).unpack("archive").await?
-                        }
-                        //let archive = Archive::new(reader);
-                        //archive.unpack("archive").await?;
                     }
                 }
                 _ => (),
@@ -43,9 +45,13 @@ async fn upload(mut payload: Multipart) -> Result<HttpResponse, Error> {
 /// Serve static files on 0.0.0.0:8080
 #[actix_web::main]
 async fn serve(config: Config) -> std::io::Result<()> {
+    env_logger::Builder::new()
+        .parse_filters(
+            &env::var(String::from("RUST_LOG"))
+                .unwrap_or(String::from("staticserve=info,actix_web=info")),
+        )
+        .init();
     let addr_port = "0.0.0.0:8080";
-    std::env::set_var("RUST_LOG", "staticserve=debug,actix_web=info");
-    env_logger::init();
     info!("listening on {}", addr_port);
     HttpServer::new(move || {
         App::new()
