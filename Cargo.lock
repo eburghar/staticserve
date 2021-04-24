@@ -1826,7 +1826,6 @@ dependencies = [
  "sanitize-filename",
  "serde",
  "serde_yaml",
- "tar",
 ]
 
 [[package]]
@@ -1887,17 +1886,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
-]
-
-[[package]]
-name = "tar"
-version = "0.4.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0bcfbd6a598361fda270d82469fff3d65089dc33e175c9a131f7b4cd395f228"
-dependencies = [
- "filetime",
- "libc",
- "xattr",
 ]
 
 [[package]]
