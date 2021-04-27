@@ -42,22 +42,22 @@ impl AsyncRead for FieldReader {
         mut buf: &mut [u8],
     ) -> Poll<Result<usize, std::io::Error>> {
         debug!("poll_read into {} bytes", buf.len());
-
+        // get a new Pin<&mut FieldReader> otherwise self would be consumed by calling poll_fill_buf
         let inner_buf = match self.as_mut().poll_fill_buf(cx) {
             Poll::Ready(Ok(buf)) => buf,
             Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
             Poll::Pending => return Poll::Pending,
         };
+        // fill buf entirely with field's chunk or fill partially with field's chunk remaining data
         let len = std::cmp::min(inner_buf.len(), inner_buf.remaining());
         return match buf.write(&inner_buf[..len]) {
             Ok(len) => {
                 debug!("consumed {} buffered bytes", len);
+                // advance cursor of internal bytes
                 self.consume(len);
                 Poll::Ready(Ok(len))
             }
-            Err(err) => {
-                Poll::Ready(Err(err))
-            }
+            Err(err) => Poll::Ready(Err(err)),
         };
     }
 }
