@@ -14,8 +14,10 @@ use std::{io::Write, pin::Pin};
 
 pin_project! {
     pub struct FieldReader {
+	    // field is pinned because it is a stream (future) that needs to be polled
         #[pin]
         field: Field,
+        // chunk is an option of owned bytes that serve as a buffer for asyncbufread
         chunk: Option<Bytes>,
     }
 }
@@ -26,12 +28,9 @@ impl FieldReader {
     }
 
     /// Do we have a chunk and is it non-empty?
-    fn has_chunk(self: Pin<&mut Self>) -> bool {
-        if let Some(chunk) = self.project().chunk {
-            chunk.has_remaining()
-        } else {
-            false
-        }
+    fn has_chunk(self: &Self) -> bool {
+	    self.chunk.as_ref().map_or_else(
+		    || false, |chunk| chunk.has_remaining())
     }
 }
 
@@ -42,7 +41,8 @@ impl AsyncRead for FieldReader {
         mut buf: &mut [u8],
     ) -> Poll<Result<usize, std::io::Error>> {
         debug!("poll_read into {} bytes", buf.len());
-        // get a new Pin<&mut FieldReader> otherwise self would be consumed by calling poll_fill_buf
+        // self is consumed by poll_fill_buf() and we need to advance inner_buf after polling
+        // hence the use of as_mut() to get a new Pin<&mut FieldReader>)
         let inner_buf = match self.as_mut().poll_fill_buf(cx) {
             Poll::Ready(Ok(buf)) => buf,
             Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
@@ -68,14 +68,14 @@ impl AsyncBufRead for FieldReader {
         cx: &mut Context<'_>,
     ) -> Poll<Result<&[u8], std::io::Error>> {
         loop {
-            if self.as_mut().has_chunk() {
+            if self.has_chunk() {
                 // This unwrap is very sad, but it can't be avoided.
                 let buf = self.project().chunk.as_ref().unwrap();
-                return Poll::Ready(Ok(buf.bytes()));
+                return Poll::Ready(Ok(buf));
             } else {
                 return match self.as_mut().project().field.poll_next(cx) {
                     Poll::Ready(Some(Ok(chunk))) => {
-                        info!("received {} bytes from stream", &chunk.remaining());
+                        info!("received {} bytes from stream", chunk.remaining());
                         // Go around the loop in case the chunk is empty.
                         *self.as_mut().project().chunk = Some(chunk);
                         continue;
