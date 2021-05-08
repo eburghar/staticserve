@@ -2,11 +2,14 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs::File;
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 #[derive(Deserialize, Clone)]
 pub struct Config {
-	pub dir: PathBuf,
+	pub serve_from: PathBuf,
+	pub upload_to: PathBuf,
 	pub token: String,
+	pub routes: HashMap<String, String>
 }
 
 impl Config {
