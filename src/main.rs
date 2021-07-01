@@ -10,13 +10,25 @@ use actix_multipart::Multipart;
 use actix_web::{middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
-use futures::stream::TryStreamExt;
+use futures::{executor, stream::TryStreamExt};
+use log::info;
 use sanitize_filename::sanitize;
-use std::{env, fs::remove_dir_all, path::Path};
+use std::{
+	env,
+	path::Path,
+	sync::{mpsc, Arc},
+	thread,
+};
+
+type Sender = mpsc::Sender<()>;
 
 /// upload an unpack a new archive in destination directory. the url is protected by a token
 #[post("/upload", wrap = "TokenAuth")]
-async fn upload(mut payload: Multipart, config: web::Data<Config>) -> Result<HttpResponse, Error> {
+async fn upload(
+	mut payload: Multipart,
+	config: web::Data<Config>,
+	sender: web::Data<Sender>,
+) -> Result<HttpResponse, Error> {
 	// iterate over multipart stream
 	while let Some(field) = payload.try_next().await? {
 		let filename = field
@@ -26,16 +38,17 @@ async fn upload(mut payload: Multipart, config: web::Data<Config>) -> Result<Htt
 			.flatten();
 
 		if let Some(filename) = filename {
-			log::info!("untar {}", filename);
-			remove_dir_all(&config.upload_to)?;
+			info!("untar {}", filename);
 			if filename.ends_with(".tar") {
 				Archive::new(FieldReader::new(field))
 					.unpack(&config.upload_to)
 					.await?;
+				let _ = sender.send(());
 			} else if filename.ends_with("tar.zst") {
 				Archive::new(ZstdDecoder::new(FieldReader::new(field)))
 					.unpack(&config.upload_to)
 					.await?;
+				let _ = sender.send(());
 			}
 		}
 	}
@@ -52,15 +65,20 @@ async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::R
 }
 
 /// Serve static files on 0.0.0.0:8080
-async fn serve(config: Config) -> std::io::Result<()> {
+async fn serve(config: Config) -> std::io::Result<bool> {
 	let addr_port = "0.0.0.0:8080";
-	log::info!("listening on {}", addr_port);
+	info!("listening on {}", addr_port);
 
-	HttpServer::new(move || {
+	// channel allowing upload task to ask for a reload of the server
+	let (tx, rx) = mpsc::channel::<()>();
+
+	// build the server
+	let server = HttpServer::new(move || {
 		App::new()
 			.wrap(middleware::Logger::default())
 			.wrap(middleware::Compress::default())
 			.data(config.clone())
+			.data(tx.clone())
 			.service(upload)
 			.configure(|cfg| {
 				config.routes.iter().fold(cfg, |cfg, (path, _)| {
@@ -70,8 +88,23 @@ async fn serve(config: Config) -> std::io::Result<()> {
 			.service(Files::new("/", &config.serve_from).index_file("index.html"))
 	})
 	.bind(addr_port)?
-	.run()
-	.await
+	.run();
+
+	// wait for reload message in a separate thread as recv is blocking
+	let srv = server.clone();
+	// use an arc to know if the thread went to completion (reload was asked)
+	let reloaded = Arc::new(());
+	let reloaded_wk = Arc::downgrade(&reloaded);
+	thread::spawn(move || {
+		// trigger the move of reloaded to closure
+		let _ = reloaded;
+		rx.recv().unwrap_or_else(|_| {});
+		executor::block_on(srv.stop(true))
+	});
+
+	server.await?;
+	// if the weak pointer can't upgrade, the thread is gone
+	Ok(reloaded_wk.upgrade().is_none())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -85,9 +118,17 @@ fn main() -> anyhow::Result<()> {
 	let opts: Opts = argh::from_env();
 	// read yaml config
 	let config = Config::read(&opts.config)?;
-	// start actix main loop
+
 	let mut system = actix_web::rt::System::new("main");
-	system.block_on::<_, std::io::Result<()>>(serve(config.clone()))?;
+	loop {
+		let res = system.block_on::<_, std::io::Result<bool>>(serve(config.clone()))?;
+		if res {
+			log::info!("service restarted");
+		} else {
+			log::info!("service stopped");
+			break;
+		}
+	}
 
 	Ok(())
 }
