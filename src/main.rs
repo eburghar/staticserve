@@ -92,18 +92,18 @@ async fn serve(config: Config) -> std::io::Result<bool> {
 
 	// wait for reload message in a separate thread as recv is blocking
 	let srv = server.clone();
-	// use an arc to know if the thread went to completion (reload was asked)
+	// use an arc to know if the thread went to completion (ie reload was triggered)
 	let reloaded = Arc::new(());
 	let reloaded_wk = Arc::downgrade(&reloaded);
 	thread::spawn(move || {
-		// trigger the move of reloaded to closure
+		// move reloaded to the closure
 		let _ = reloaded;
 		rx.recv().unwrap_or_else(|_| {});
 		executor::block_on(srv.stop(true))
 	});
 
 	server.await?;
-	// if the weak pointer can't upgrade, the thread is gone
+	// if the weak pointer can't upgrade then the thread is gone
 	Ok(reloaded_wk.upgrade().is_none())
 }
 
@@ -121,11 +121,11 @@ fn main() -> anyhow::Result<()> {
 
 	let mut system = actix_web::rt::System::new("main");
 	loop {
-		let res = system.block_on::<_, std::io::Result<bool>>(serve(config.clone()))?;
-		if res {
-			log::info!("service restarted");
+		let reloaded = system.block_on::<_, std::io::Result<bool>>(serve(config.clone()))?;
+		if reloaded {
+			log::info!("restart server");
 		} else {
-			log::info!("service stopped");
+			log::info!("stop server");
 			break;
 		}
 	}
