@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Éric BURGHARD <eric@itsufficient.me>"]
 edition = "2018"
 description = "Static file server with ability to upload and refresh content"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 actix-files = "0.4.0"

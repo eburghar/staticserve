@@ -1,27 +1,29 @@
 mod args;
 mod config;
 mod fieldreader;
+mod auth;
 
-use crate::{args::Opts, config::Config, fieldreader::FieldReader};
+use crate::{args::Opts, config::Config, fieldreader::FieldReader, auth::TokenAuth};
 
-use actix_files::Files;
+use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
-use actix_web::{web, middleware::Logger, post, App, Error, HttpResponse, HttpServer};
+use actix_web::{middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::stream::TryStreamExt;
 use log::info;
 use sanitize_filename::sanitize;
-use std::env;
+use std::{env, path::Path};
 
-#[post("/upload")]
+/// upload an unpack a new archive in destination directory. the url is protected by a token
+#[post("/upload", wrap = "TokenAuth")]
 async fn upload(mut payload: Multipart, config: web::Data<Config>) -> Result<HttpResponse, Error> {
 	// iterate over multipart stream
-	while let Ok(Some(field)) = payload.try_next().await {
+	while let Some(field) = payload.try_next().await? {
 		let filename = field
 			.content_disposition()
 			.filter(|cd| cd.get_name() == Some("file"))
-			.map(|cd| cd.get_filename().and_then(|f| Some(sanitize(f))))
+			.map(|cd| cd.get_filename().map(|f| sanitize(f)))
 			.flatten();
 
 		if let Some(filename) = filename {
@@ -40,28 +42,39 @@ async fn upload(mut payload: Multipart, config: web::Data<Config>) -> Result<Htt
 	Ok(HttpResponse::Ok().into())
 }
 
+/// Serve associated files for dynamic routes
+async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::Result<NamedFile> {
+	// we are sure than there is a match_pattern and a corresponding value in config.routes hashmap
+	// because this handler has been configured from it: unwrap should never panic
+	let path = req.match_pattern().unwrap();
+	let file = Path::new(&config.serve_from).join(config.routes.get(&path).unwrap());
+	Ok(NamedFile::open(file)?)
+}
+
 /// Serve static files on 0.0.0.0:8080
 #[actix_web::main]
 async fn serve(config: Config) -> std::io::Result<()> {
 	env_logger::Builder::new()
 		.parse_filters(
-			&env::var(String::from("RUST_LOG"))
-				.unwrap_or(String::from("staticserve=info,actix_web=info")),
+			&env::var("RUST_LOG".to_owned())
+				.unwrap_or("staticserve=info,actix_web=info".to_owned()),
 		)
 		.init();
 	let addr_port = "0.0.0.0:8080";
 	info!("listening on {}", addr_port);
 	HttpServer::new(move || {
 		App::new()
-			.wrap(Logger::default())
+			.wrap(middleware::Logger::default())
+			.wrap(middleware::Compress::default())
 			.data(config.clone())
 			.service(upload)
 			.configure(|cfg| {
-				for (route, path) in &config.routes {
-					println!("{} -> {}", route, path);
-				}
+				config.routes.iter().fold(cfg, |cfg, (path, file)| {
+					println!("{} -> {}", path, file);
+					cfg.route(&path, web::get().to(route_path))
+				});
 			})
-			.service(Files::new("/", &config.serve_from).show_files_listing())
+			.service(Files::new("/", &config.serve_from).index_file("index.html"))
 	})
 	.bind(addr_port)?
 	.run()
