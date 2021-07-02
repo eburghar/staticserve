@@ -41,12 +41,12 @@ async fn upload(
 			info!("untar {}", filename);
 			if filename.ends_with(".tar") {
 				Archive::new(FieldReader::new(field))
-					.unpack(&config.upload_to)
+					.unpack(&config.dir)
 					.await?;
 				let _ = sender.send(());
 			} else if filename.ends_with("tar.zst") {
 				Archive::new(ZstdDecoder::new(FieldReader::new(field)))
-					.unpack(&config.upload_to)
+					.unpack(&config.dir)
 					.await?;
 				let _ = sender.send(());
 			}
@@ -60,7 +60,7 @@ async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::R
 	// we are sure that there is a match_pattern and a corresponding value in config.routes hashmap
 	// because this handler has been configured from it: unwrap should never panic
 	let path = req.match_pattern().unwrap();
-	let file = Path::new(&config.serve_from).join(config.routes.get(&path).unwrap());
+	let file = Path::new(&config.root).join(config.routes.get(&path).unwrap());
 	Ok(NamedFile::open(file)?)
 }
 
@@ -86,7 +86,7 @@ async fn serve(config: Config) -> std::io::Result<bool> {
 					cfg.route(&path, web::get().to(route_path))
 				});
 			})
-			.service(Files::new("/", &config.serve_from).index_file("index.html"))
+			.service(Files::new("/", &config.root).index_file("index.html"))
 	})
 	.bind(addr_port)?
 	.run();
@@ -116,10 +116,14 @@ fn main() -> anyhow::Result<()> {
 		)
 		.init();
 
+	// read command line options
 	let opts: Opts = argh::from_env();
 	// read yaml config
-	let config = Config::read(&opts.config)?;
+	let mut config = Config::read(&opts.config)?;
+	// join dir and root
+	config.root = config.dir.join(config.root);
 
+	// start actix main loop
 	let mut system = actix_web::rt::System::new("main");
 	loop {
 		let reloaded = system.block_on::<_, std::io::Result<bool>>(serve(config.clone()))?;
