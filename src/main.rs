@@ -57,7 +57,7 @@ async fn upload(
 
 /// Serve associated files for dynamic routes
 async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::Result<NamedFile> {
-	// we are sure than there is a match_pattern and a corresponding value in config.routes hashmap
+	// we are sure that there is a match_pattern and a corresponding value in config.routes hashmap
 	// because this handler has been configured from it: unwrap should never panic
 	let path = req.match_pattern().unwrap();
 	let file = Path::new(&config.serve_from).join(config.routes.get(&path).unwrap());
@@ -77,6 +77,7 @@ async fn serve(config: Config) -> std::io::Result<bool> {
 		App::new()
 			.wrap(middleware::Logger::default())
 			.wrap(middleware::Compress::default())
+			.wrap(middleware::DefaultHeaders::new().header("Cache-Control", "max-age=3600"))
 			.data(config.clone())
 			.data(tx.clone())
 			.service(upload)
