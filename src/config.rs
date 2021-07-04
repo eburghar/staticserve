@@ -11,6 +11,12 @@ pub struct Config {
 	pub dir: PathBuf,
 	/// root of the web server (relative to dir)
 	pub root: PathBuf,
+	/// use tls
+	pub tls: bool,
+	/// crt path
+	pub crt: PathBuf,
+	/// key path
+	pub key: PathBuf,
 	/// token for uploading
 	pub token: String,
 	/// dynamic routes pointing to static files

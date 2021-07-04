@@ -8,13 +8,20 @@ use crate::{args::Opts, auth::TokenAuth, config::Config, fieldreader::FieldReade
 use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
 use actix_web::{middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use anyhow::Context;
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::{executor, stream::TryStreamExt};
 use log::info;
+use rustls::{
+	internal::pemfile::{certs, pkcs8_private_keys},
+	NoClientAuth, ServerConfig,
+};
 use sanitize_filename::sanitize;
 use std::{
 	env,
+	fs::File,
+	io::BufReader,
 	path::Path,
 	sync::{mpsc, Arc},
 	thread,
@@ -64,13 +71,15 @@ async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::R
 	Ok(NamedFile::open(file)?)
 }
 
-/// Serve static files on 0.0.0.0:8080
-async fn serve(config: Config) -> std::io::Result<bool> {
-	let addr_port = "0.0.0.0:8080";
-	info!("listening on {}", addr_port);
-
+/// Serve static files on addr
+async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 	// channel allowing upload task to ask for a reload of the server
 	let (tx, rx) = mpsc::channel::<()>();
+
+	// copy some values before config is moved
+	let tls = config.tls;
+	let crt = config.crt.clone();
+	let key = config.key.clone();
 
 	// build the server
 	let server = HttpServer::new(move || {
@@ -87,24 +96,47 @@ async fn serve(config: Config) -> std::io::Result<bool> {
 				});
 			})
 			.service(Files::new("/", &config.root).index_file("index.html"))
-	})
-	.bind(addr_port)?
-	.run();
+	});
+	let server = if tls {
+		// Create tls config
+		let mut tls_config = ServerConfig::new(NoClientAuth::new());
+		// Read key and certificate
+		let crt = &mut BufReader::new(File::open(crt)?);
+		let key = &mut BufReader::new(File::open(key)?);
+		// Parse the certificate and set it in the configuration
+		let crt_chain = certs(crt).map_err(|_| anyhow::Error::msg("error reading certificate"))?;
+		let mut keys =
+			pkcs8_private_keys(key).map_err(|_| anyhow::Error::msg("error reading key"))?;
+		tls_config
+			.set_single_cert(crt_chain, keys.remove(0))
+			.with_context(|| "error setting crt/key pair")?;
+		server
+			.bind_rustls(&addr, tls_config)
+			.with_context(|| format!("unable to bind to https://{}", &addr))?
+			.run()
+	} else {
+		server
+			.bind(&addr)
+			.with_context(|| format!("unable to bind to http://{}", &addr))?
+			.run()
+	};
 
-	// wait for reload message in a separate thread as recv is blocking
+	// wait for reload message in a separate thread as recv call is blocking
 	let srv = server.clone();
-	// use an arc to know if the thread went to completion (ie reload was triggered)
+	// use an arc to know if the thread went up to completion (ie reload was triggered)
 	let reloaded = Arc::new(());
 	let reloaded_wk = Arc::downgrade(&reloaded);
 	thread::spawn(move || {
-		// move reloaded to the closure
+		// void statement to move 'reloaded' to the closure
 		let _ = reloaded;
 		rx.recv().unwrap_or_else(|_| {});
 		executor::block_on(srv.stop(true))
 	});
 
+	info!("listening on http{}://{}", if tls {"s"} else {""}, &addr);
 	server.await?;
-	// if the weak pointer can't upgrade then the thread is gone
+
+	// if the weak pointer can't upgrade then the reload recv thread is gone
 	Ok(reloaded_wk.upgrade().is_none())
 }
 
@@ -126,7 +158,8 @@ fn main() -> anyhow::Result<()> {
 	// start actix main loop
 	let mut system = actix_web::rt::System::new("main");
 	loop {
-		let reloaded = system.block_on::<_, std::io::Result<bool>>(serve(config.clone()))?;
+		let reloaded =
+			system.block_on::<_, anyhow::Result<bool>>(serve(config.clone(), opts.addr.clone()))?;
 		if reloaded {
 			log::info!("restart server");
 		} else {

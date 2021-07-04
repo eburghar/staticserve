@@ -3,10 +3,15 @@ use argh::FromArgs;
 #[derive(FromArgs)]
 /// Extract latest projects archives from a gitlab server
 pub struct Opts {
-	#[argh(option, short = 'c', default="\"/etc/staticserve.yaml\".to_owned()")]
 	/// configuration file containing projects and gitlab connection parameters
+	#[argh(option, short = 'c', default="\"/etc/staticserve.yaml\".to_owned()")]
 	pub config: String,
-	#[argh(switch, short = 'v')]
+
 	/// more detailed output
+	#[argh(switch, short = 'v')]
 	pub verbose: bool,
+
+	/// addr:port to bind to
+	#[argh(option, short = 'a', default="\"0.0.0.0:8080\".to_owned()")]
+	pub addr: String,
 }
