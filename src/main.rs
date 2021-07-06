@@ -12,7 +12,6 @@ use anyhow::Context;
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::{executor, stream::TryStreamExt};
-use log::info;
 use rustls::{
 	internal::pemfile::{certs, pkcs8_private_keys},
 	NoClientAuth, ServerConfig,
@@ -45,7 +44,7 @@ async fn upload(
 			.flatten();
 
 		if let Some(filename) = filename {
-			info!("untar {}", filename);
+			log::info!("untar {}", filename);
 			if filename.ends_with(".tar") {
 				Archive::new(FieldReader::new(field))
 					.unpack(&config.dir)
@@ -97,6 +96,8 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 			})
 			.service(Files::new("/", &config.root).index_file("index.html"))
 	});
+
+	// bind to http or https
 	let server = if tls {
 		// Create tls config
 		let mut tls_config = ServerConfig::new(NoClientAuth::new());
@@ -133,7 +134,11 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 		executor::block_on(srv.stop(true))
 	});
 
-	info!("listening on http{}://{}", if tls {"s"} else {""}, &addr);
+	log::info!(
+		"listening on http{}://{}",
+		if tls { "s" } else { "" },
+		&addr
+	);
 	server.await?;
 
 	// if the weak pointer can't upgrade then the reload recv thread is gone
@@ -141,6 +146,7 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 }
 
 fn main() -> anyhow::Result<()> {
+	// setup logging
 	env_logger::Builder::new()
 		.parse_filters(
 			&env::var("RUST_LOG".to_owned())
