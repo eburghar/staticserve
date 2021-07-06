@@ -88,8 +88,8 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 		create_dir_all(&config.root)
 			.with_context(|| format!("unable to create directory {:?}", &config.root))?;
 		let index = config.root.join("index.html");
-		let mut f = File::create(&index)
-			.with_context(|| format!("failed to create {:?}", &index))?;
+		let mut f =
+			File::create(&index).with_context(|| format!("failed to create {:?}", &index))?;
 		f.write_all(INDEX.as_bytes())
 			.with_context(|| format!("failed to write to {:?}", &index))?;
 	}
@@ -124,8 +124,12 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 		// Create tls config
 		let mut tls_config = ServerConfig::new(NoClientAuth::new());
 		// Read key and certificate
-		let crt = &mut BufReader::new(File::open(crt)?);
-		let key = &mut BufReader::new(File::open(key)?);
+		let crt = &mut BufReader::new(
+			File::open(&crt).with_context(|| format!("unable to read {:?}", &crt))?,
+		);
+		let key = &mut BufReader::new(
+			File::open(&key).with_context(|| format!("unable to read {:?}", &key))?,
+		);
 		// Parse the certificate and set it in the configuration
 		let crt_chain = certs(crt).map_err(|_| anyhow::Error::msg("error reading certificate"))?;
 		let mut keys =
