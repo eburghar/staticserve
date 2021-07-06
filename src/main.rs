@@ -19,14 +19,25 @@ use rustls::{
 use sanitize_filename::sanitize;
 use std::{
 	env,
-	fs::File,
-	io::BufReader,
+	fs::{create_dir_all, File},
+	io::{BufReader, Write},
 	path::Path,
 	sync::{mpsc, Arc},
 	thread,
 };
 
 type Sender = mpsc::Sender<()>;
+
+const INDEX: &str = r#"<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>It works !</title>
+  </head>
+  <body>
+    <p>You can now upload new content.</p>
+  </body>
+</html>"#;
 
 /// upload an unpack a new archive in destination directory. the url is protected by a token
 #[post("/upload", wrap = "TokenAuth")]
@@ -72,6 +83,17 @@ async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::R
 
 /// Serve static files on addr
 async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
+	// create directory with index.html
+	if !config.root.exists() {
+		create_dir_all(&config.root)
+			.with_context(|| format!("unable to create directory {:?}", &config.root))?;
+		let index = config.root.join("index.html");
+		let mut f = File::create(&index)
+			.with_context(|| format!("failed to create {:?}", &index))?;
+		f.write_all(INDEX.as_bytes())
+			.with_context(|| format!("failed to write to {:?}", &index))?;
+	}
+
 	// channel allowing upload task to ask for a reload of the server
 	let (tx, rx) = mpsc::channel::<()>();
 

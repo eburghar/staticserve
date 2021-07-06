@@ -42,7 +42,7 @@ It uses the [fast rustls](https://jbp.io/2019/07/01/rustls-vs-openssl-performanc
 ## Uploading
 
 ```sh
-curl -k -H 'token: xxxxxxxxxxxxxx' -F file=@blog.tar.zst https://host/upload
+curl -H 'token: xxxxxxxxxxxxxx' -F file=@blog.tar.zst https://host/upload
 ```
 
 The server will restart automatically to serve the new content.
