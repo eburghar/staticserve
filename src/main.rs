@@ -128,14 +128,16 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 			File::open(&crt).with_context(|| format!("unable to read {:?}", &crt))?,
 		))
 		.map_err(|_| anyhow::anyhow!("error reading certificate"))?;
+		// Parse the key in RSA or PKCS8 format
 		let invalid_key = |()| anyhow::anyhow!("invalid key in {:?}", &key);
-		let no_key = |()| anyhow::anyhow!("no key found in {:?}", &key);
+		let no_key = || anyhow::anyhow!("no key found in {:?}", &key);
 		let mut keys = rsa_private_keys(&mut BufReader::new(File::open(&key)?))
 			.map_err(invalid_key)
-			.and_then(|x| x.is_empty().then(|| x).ok_or(no_key(())))
+			.and_then(|x| (!x.is_empty()).then(|| x).ok_or(no_key()))
 			.or_else(|_| {
-				pkcs8_private_keys(&mut BufReader::new(File::open(&key)?)).map_err(invalid_key)
-					.and_then(|x| x.is_empty().then(|| x).ok_or(no_key(())))
+				pkcs8_private_keys(&mut BufReader::new(File::open(&key)?))
+					.map_err(invalid_key)
+					.and_then(|x| (!x.is_empty()).then(|| x).ok_or(no_key()))
 			})?;
 		tls_config
 			.set_single_cert(crt_chain, keys.remove(0))
