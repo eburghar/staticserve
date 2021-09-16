@@ -13,7 +13,7 @@ use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::{executor, stream::TryStreamExt};
 use rustls::{
-	internal::pemfile::{certs, pkcs8_private_keys},
+	internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
 	NoClientAuth, ServerConfig,
 };
 use sanitize_filename::sanitize;
@@ -123,17 +123,20 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 	let server = if tls {
 		// Create tls config
 		let mut tls_config = ServerConfig::new(NoClientAuth::new());
-		// Read key and certificate
-		let crt = &mut BufReader::new(
-			File::open(&crt).with_context(|| format!("unable to read {:?}", &crt))?,
-		);
-		let key = &mut BufReader::new(
-			File::open(&key).with_context(|| format!("unable to read {:?}", &key))?,
-		);
 		// Parse the certificate and set it in the configuration
-		let crt_chain = certs(crt).map_err(|_| anyhow::Error::msg("error reading certificate"))?;
-		let mut keys =
-			pkcs8_private_keys(key).map_err(|_| anyhow::Error::msg("error reading key"))?;
+		let crt_chain = certs(&mut BufReader::new(
+			File::open(&crt).with_context(|| format!("unable to read {:?}", &crt))?,
+		))
+		.map_err(|_| anyhow::anyhow!("error reading certificate"))?;
+		let invalid_key = |()| anyhow::anyhow!("invalid key in {:?}", &key);
+		let no_key = |()| anyhow::anyhow!("no key found in {:?}", &key);
+		let mut keys = rsa_private_keys(&mut BufReader::new(File::open(&key)?))
+			.map_err(invalid_key)
+			.and_then(|x| x.is_empty().then(|| x).ok_or(no_key(())))
+			.or_else(|_| {
+				pkcs8_private_keys(&mut BufReader::new(File::open(&key)?)).map_err(invalid_key)
+					.and_then(|x| x.is_empty().then(|| x).ok_or(no_key(())))
+			})?;
 		tls_config
 			.set_single_cert(crt_chain, keys.remove(0))
 			.with_context(|| "error setting crt/key pair")?;

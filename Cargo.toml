@@ -1,6 +1,6 @@
 [package]
 name = "staticserve"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Éric BURGHARD <eric@itsufficient.me>"]
 edition = "2018"
 description = "Static file server with ability to upload content and define dynamic routes"
