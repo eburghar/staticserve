@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs::File;
 use std::path::PathBuf;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Config file
 #[derive(Deserialize, Clone)]
@@ -14,13 +14,15 @@ pub struct Config {
 	/// use tls
 	pub tls: bool,
 	/// crt path
-	pub crt: PathBuf,
+	pub crt: Option<PathBuf>,
 	/// key path
-	pub key: PathBuf,
-	/// token for uploading
-	pub token: String,
+    pub key: Option<PathBuf>,
 	/// dynamic routes pointing to static files
-	pub routes: HashMap<String, String>
+	pub routes: HashMap<String, String>,
+	/// jwks endpoint
+	pub jwks: String,
+	/// claims
+	pub claims: BTreeMap<String, String>
 }
 
 impl Config {

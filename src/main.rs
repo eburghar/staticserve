@@ -1,14 +1,17 @@
 mod args;
-mod auth;
 mod config;
 mod fieldreader;
 
-use crate::{args::Opts, auth::TokenAuth, config::Config, fieldreader::FieldReader};
+use crate::{args::Opts, config::Config, fieldreader::FieldReader};
 
 use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
 use actix_web::{middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use anyhow::Context;
+use actix_token_middleware::{
+	jwt::{Claims, Jwks},
+	jwtauth::JwtAuth,
+};
+use anyhow::{anyhow, Context};
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::{executor, stream::TryStreamExt};
@@ -40,7 +43,7 @@ const INDEX: &str = r#"<!DOCTYPE html>
 </html>"#;
 
 /// upload an unpack a new archive in destination directory. the url is protected by a token
-#[post("/upload", wrap = "TokenAuth")]
+#[post("/upload", wrap = "JwtAuth")]
 async fn upload(
 	mut payload: Multipart,
 	config: web::Data<Config>,
@@ -101,6 +104,14 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 	let tls = config.tls;
 	let crt = config.crt.clone();
 	let key = config.key.clone();
+	let claims = config.claims.clone();
+
+	// get jwks
+	let jwks = Jwks::get(&config.jwks)
+		.await
+		.map_err(|e| anyhow!("failed to get the JWKS: {}", e))?;
+	// extract claims from config
+	let claims = Claims::new(claims);
 
 	// build the server
 	let server = HttpServer::new(move || {
@@ -110,6 +121,8 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 			.wrap(middleware::DefaultHeaders::new().header("Cache-Control", "max-age=3600"))
 			.data(config.clone())
 			.data(tx.clone())
+			.data(jwks.clone())
+			.data(claims.clone())
 			.service(upload)
 			.configure(|cfg| {
 				config.routes.iter().fold(cfg, |cfg, (path, _)| {
@@ -121,16 +134,22 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 
 	// bind to http or https
 	let server = if tls {
+		// get key and crt
+		let crt = crt.ok_or_else(|| anyhow!("missing crt path in config"))?;
+		let key = key.ok_or_else(|| anyhow!("missing key path in config"))?;
+
 		// Create tls config
 		let mut tls_config = ServerConfig::new(NoClientAuth::new());
+
 		// Parse the certificate and set it in the configuration
 		let crt_chain = certs(&mut BufReader::new(
 			File::open(&crt).with_context(|| format!("unable to read {:?}", &crt))?,
 		))
-		.map_err(|_| anyhow::anyhow!("error reading certificate"))?;
+		.map_err(|_| anyhow!("error reading certificate"))?;
+
 		// Parse the key in RSA or PKCS8 format
-		let invalid_key = |()| anyhow::anyhow!("invalid key in {:?}", &key);
-		let no_key = || anyhow::anyhow!("no key found in {:?}", &key);
+		let invalid_key = |_| anyhow!("invalid key in {:?}", &key);
+		let no_key = || anyhow!("no key found in {:?}", &key);
 		let mut keys = rsa_private_keys(&mut BufReader::new(File::open(&key)?))
 			.map_err(invalid_key)
 			.and_then(|x| (!x.is_empty()).then(|| x).ok_or(no_key()))
@@ -147,6 +166,7 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 			.with_context(|| format!("unable to bind to https://{}", &addr))?
 			.run()
 	} else {
+		log::warn!("TLS is not activated. Use only for development");
 		server
 			.bind(&addr)
 			.with_context(|| format!("unable to bind to http://{}", &addr))?
