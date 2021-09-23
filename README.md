@@ -1,9 +1,13 @@
 # staticserve
 
-A simple and fast async http(s) server for hosting static website (JAMSTACK) under kubernetes, and replacing nginx.
-- `staticserve` defines an API point protected by a token to upload and decompress a new site archive (.tar or
-  .tar.zst) that can be easily used in CI/CD pipelines,
-- allows to define dynamic routes to accomodate bookmarked links (vuerouter for example).
+A simple and fast async http(s) server for hosting static website (JAMSTACK) under kubernetes. `staticserve` defines
+an API point (`/upload`) protected by a JWT token to update website content by uploading an archive (.tar or .tar.zst).
+
+A JWKS endpoint is used to retrieve the public keys needed to verify the validity of the token, and a claims map
+with expected values can be used to restrict even more who can upload new content to the server. This is specially
+useful in CI/CD pipelines.
+
+You can also define dynamic routes to accomodate bookmarked links (vuerouter for instance).
 
 ## Usage
 
@@ -30,7 +34,12 @@ root: dist
 tls: true
 crt: /var/run/secrets/staticserve/tls.crt
 key: /var/run/secrets/staticserve/tls.key
-token: xxxxxxxxxxxxxx
+jwks: https://gitlab.com/-/jwks
+# only allow a job from a particular project running on a protected branch or tag to update content
+claims:
+  iss: gitlab.com
+  project_path: node/blog
+  ref_protected: true
 routes:
   "/search/category/{category}/{search}": "search/category/_category/_search.html"
 ```
@@ -42,7 +51,7 @@ It uses the [fast rustls](https://jbp.io/2019/07/01/rustls-vs-openssl-performanc
 ## Uploading
 
 ```sh
-curl -H 'token: xxxxxxxxxxxxxx' -F file=@blog.tar.zst https://host/upload
+curl -H 'Authorization: Bearer: $CI_JOB_JWT' -F file=@blog.tar.zst https://host/upload
 ```
 
 The server will restart automatically to serve the new content.
