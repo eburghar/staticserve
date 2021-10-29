@@ -1,0 +1,6 @@
+include:
+  - project: gitlab/templates
+    file:
+      - build_rust.yml
+      - commit_downstream_apk.yml
+    ref: "master"
