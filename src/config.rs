@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::fs::File;
 use std::path::PathBuf;
 use std::collections::{BTreeMap, HashMap};
+use crate::cache::CacheControl;
 
 /// Config file
 #[derive(Deserialize, Clone)]
@@ -22,7 +23,9 @@ pub struct Config {
 	/// jwks endpoint
 	pub jwks: String,
 	/// claims
-	pub claims: BTreeMap<String, String>
+	pub claims: BTreeMap<String, String>,
+    // cache control configuration
+    pub cache: CacheControl
 }
 
 impl Config {
