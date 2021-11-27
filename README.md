@@ -40,9 +40,9 @@ Create a `/etc/staticserve.yaml`
 ```yaml
 dir: /var/lib/staticserve
 root: dist
-tls: true
-crt: /var/run/secrets/staticserve/tls.crt
-key: /var/run/secrets/staticserve/tls.key
+tls:
+  crt: /var/run/secrets/staticserve/tls.crt
+  key: /var/run/secrets/staticserve/tls.key
 jwk: https://gitlab.com/-/jwks
 # only allow a job from a particular project running on a protected branch or tag to update content
 claims:

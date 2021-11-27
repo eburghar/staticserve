@@ -5,27 +5,19 @@ use actix_web::{
 	Error,
 };
 use futures::future::{ok, FutureExt, LocalBoxFuture, Ready};
-use serde::Deserialize;
 use std::{
-	collections::BTreeMap,
 	rc::Rc,
 	task::{Context, Poll},
 };
 
-#[derive(Deserialize, Clone)]
-/// Control Cache behavior
-pub struct CacheControl {
-	// cache control instructions for paths matching a list prefix
-	pub prefixes: Option<BTreeMap<String, String>>,
-	// cache control instructions for paths matching a list suffix
-	pub suffixes: Option<BTreeMap<String, String>>,
-}
+use crate::config::CacheControl;
 
 impl CacheControl {
 	/// return the first cache-control value that match path as a prefix or as a suffix
 	fn get_value(&self, path: &str) -> Option<&str> {
 		if let Some(ref prefixes) = self.prefixes {
-			for (prefix, value) in prefixes.iter() { if path.starts_with(prefix) {
+			for (prefix, value) in prefixes.iter() {
+				if path.starts_with(prefix) {
 					return Some(value);
 				}
 			}
