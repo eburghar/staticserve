@@ -102,9 +102,7 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 	let (tx, rx) = mpsc::channel::<()>();
 
 	// copy some values before config is moved
-	let tls = config.tls;
-	let crt = config.crt.clone();
-	let key = config.key.clone();
+	let tls = config.tls.clone();
 	let claims = config.claims.clone();
 
 	// get jwks
@@ -134,28 +132,24 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 	});
 
 	// bind to http or https
-	let server = if tls {
-		// get key and crt
-		let crt = crt.ok_or_else(|| anyhow!("missing crt path in config"))?;
-		let key = key.ok_or_else(|| anyhow!("missing key path in config"))?;
-
+	let server = if let Some(ref tls) = tls {
 		// Create tls config
 		let mut tls_config = ServerConfig::new(NoClientAuth::new());
 
 		// Parse the certificate and set it in the configuration
 		let crt_chain = certs(&mut BufReader::new(
-			File::open(&crt).with_context(|| format!("unable to read {:?}", &crt))?,
+			File::open(&tls.crt).with_context(|| format!("unable to read {:?}", &tls.crt))?,
 		))
 		.map_err(|_| anyhow!("error reading certificate"))?;
 
 		// Parse the key in RSA or PKCS8 format
-		let invalid_key = |_| anyhow!("invalid key in {:?}", &key);
-		let no_key = || anyhow!("no key found in {:?}", &key);
-		let mut keys = rsa_private_keys(&mut BufReader::new(File::open(&key)?))
+		let invalid_key = |_| anyhow!("invalid key in {:?}", &tls.key);
+		let no_key = || anyhow!("no key found in {:?}", &tls.key);
+		let mut keys = rsa_private_keys(&mut BufReader::new(File::open(&tls.key)?))
 			.map_err(invalid_key)
 			.and_then(|x| (!x.is_empty()).then(|| x).ok_or(no_key()))
 			.or_else(|_| {
-				pkcs8_private_keys(&mut BufReader::new(File::open(&key)?))
+				pkcs8_private_keys(&mut BufReader::new(File::open(&tls.key)?))
 					.map_err(invalid_key)
 					.and_then(|x| (!x.is_empty()).then(|| x).ok_or(no_key()))
 			})?;
@@ -188,7 +182,7 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 
 	log::info!(
 		"listening on http{}://{}",
-		if tls { "s" } else { "" },
+		if tls.is_some() { "s" } else { "" },
 		&addr
 	);
 	server.await?;
