@@ -1,8 +1,9 @@
 mod args;
 mod config;
 mod fieldreader;
+mod cache;
 
-use crate::{args::Opts, config::Config, fieldreader::FieldReader};
+use crate::{args::Opts, config::Config, fieldreader::FieldReader, cache::CacheHeaders};
 
 use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
@@ -118,7 +119,7 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 		App::new()
 			.wrap(middleware::Logger::default())
 			.wrap(middleware::Compress::default())
-			.wrap(middleware::DefaultHeaders::new().header("Cache-Control", "max-age=3600"))
+			.wrap( CacheHeaders::new(config.cache.clone()))
 			.data(config.clone())
 			.data(tx.clone())
 			.data(jwks.clone())

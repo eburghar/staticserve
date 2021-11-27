@@ -1,7 +1,7 @@
 use argh::FromArgs;
 
 #[derive(FromArgs)]
-/// Extract latest projects archives from a gitlab server
+/// Static file server with ability to upload content and define dynamic routes
 pub struct Opts {
 	/// configuration file containing projects and gitlab connection parameters
 	#[argh(option, short = 'c', default="\"/etc/staticserve.yaml\".to_owned()")]

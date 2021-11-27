@@ -1,6 +1,6 @@
 [package]
 name = "staticserve"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Éric BURGHARD <eric@itsufficient.me>"]
 edition = "2018"
 description = "Static file server with ability to upload content and define dynamic routes"
@@ -22,6 +22,7 @@ sanitize-filename = "0.3.0"
 serde = "1.0.117"
 serde_yaml = "0.8.14"
 actix-token-middleware = "0.1"
+actix-service = "1"
 
 [patch.crates-io]
 actix-token-middleware = { git = "https://github.com/eburghar/actix-token-middleware.git", branch = "master" }
