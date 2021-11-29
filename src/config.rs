@@ -1,9 +1,19 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
-use std::collections::{BTreeMap, HashMap};
-use crate::cache::CacheControl;
+use actix_cachecontrol_middleware::data::CacheControl;
+use actix_token_middleware::data::Jwt;
+
+#[derive(Deserialize, Clone)]
+/// Tls configuration
+pub struct Tls {
+	/// crt path
+	pub crt: PathBuf,
+	/// key path
+	pub key: PathBuf,
+}
 
 /// Config file
 #[derive(Deserialize, Clone)]
@@ -13,19 +23,13 @@ pub struct Config {
 	/// root of the web server (relative to dir)
 	pub root: PathBuf,
 	/// use tls
-	pub tls: bool,
-	/// crt path
-	pub crt: Option<PathBuf>,
-	/// key path
-    pub key: Option<PathBuf>,
+	pub tls: Option<Tls>,
 	/// dynamic routes pointing to static files
-	pub routes: HashMap<String, String>,
+	pub routes: Option<HashMap<String, String>>,
 	/// jwks endpoint
-	pub jwks: String,
-	/// claims
-	pub claims: BTreeMap<String, String>,
-    // cache control configuration
-    pub cache: CacheControl
+	pub jwt: Option<Jwt>,
+	/// cache control configuration
+	pub cache: Option<CacheControl>,
 }
 
 impl Config {
@@ -38,4 +42,3 @@ impl Config {
 		Ok(config)
 	}
 }
-
