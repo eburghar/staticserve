@@ -1,17 +1,10 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
-
-#[derive(Deserialize, Clone)]
-/// Control Cache behavior
-pub struct CacheControl {
-	// cache control instructions for paths matching a list prefix
-	pub prefixes: Option<BTreeMap<String, String>>,
-	// cache control instructions for paths matching a list suffix
-	pub suffixes: Option<BTreeMap<String, String>>,
-}
+use actix_cachecontrol_middleware::data::CacheControl;
+use actix_token_middleware::data::Jwt;
 
 #[derive(Deserialize, Clone)]
 /// Tls configuration
@@ -32,13 +25,11 @@ pub struct Config {
 	/// use tls
 	pub tls: Option<Tls>,
 	/// dynamic routes pointing to static files
-	pub routes: HashMap<String, String>,
-	// jwks endpoint
-	pub jwks: String,
-	/// claims
-	pub claims: BTreeMap<String, String>,
-	// cache control configuration
-	pub cache: CacheControl,
+	pub routes: Option<HashMap<String, String>>,
+	/// jwks endpoint
+	pub jwt: Option<Jwt>,
+	/// cache control configuration
+	pub cache: Option<CacheControl>,
 }
 
 impl Config {

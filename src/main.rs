@@ -1,17 +1,14 @@
 mod args;
 mod config;
 mod fieldreader;
-mod cache;
 
-use crate::{args::Opts, config::Config, fieldreader::FieldReader, cache::CacheHeaders};
+use crate::{args::Opts, config::Config, fieldreader::FieldReader};
 
+use actix_cachecontrol_middleware::middleware::CacheHeaders;
 use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
-use actix_web::{middleware, post, web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use actix_token_middleware::{
-	jwt::{Claims, Jwks},
-	jwtauth::JwtAuth,
-};
+use actix_token_middleware::middleware::jwtauth::JwtAuth;
+use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use anyhow::{anyhow, Context};
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
@@ -44,7 +41,7 @@ const INDEX: &str = r#"<!DOCTYPE html>
 </html>"#;
 
 /// upload an unpack a new archive in destination directory. the url is protected by a token
-#[post("/upload", wrap = "JwtAuth")]
+//#[post("/upload", wrap = "JwtAuth")]
 async fn upload(
 	mut payload: Multipart,
 	config: web::Data<Config>,
@@ -80,13 +77,22 @@ async fn upload(
 async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::Result<NamedFile> {
 	// we are sure that there is a match_pattern and a corresponding value in config.routes hashmap
 	// because this handler has been configured from it: unwrap should never panic
-	let path = req.match_pattern().unwrap();
-	let file = Path::new(&config.root).join(config.routes.get(&path).unwrap());
-	Ok(NamedFile::open(file)?)
+	if let Some(ref routes) = config.routes {
+		let path = req.match_pattern().unwrap();
+		let file = Path::new(&config.root).join(routes.get(&path).unwrap());
+		Ok(NamedFile::open(file)?)
+	} else {
+		panic!("routes is not configured");
+	}
 }
 
 /// Serve static files on addr
-async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
+async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
+	// set keys from jwks endpoint
+	if let Some(ref mut jwt) = config.jwt {
+		let _ = jwt.set_keys().await.map_err(|e| anyhow!("failed to get jkws keys {}", e))?;
+	}
+
 	// create directory with index.html
 	if !config.root.exists() {
 		create_dir_all(&config.root)
@@ -103,32 +109,32 @@ async fn serve(config: Config, addr: String) -> anyhow::Result<bool> {
 
 	// copy some values before config is moved
 	let tls = config.tls.clone();
-	let claims = config.claims.clone();
-
-	// get jwks
-	let jwks = Jwks::get(&config.jwks)
-		.await
-		.map_err(|e| anyhow!("failed to get the JWKS: {}", e))?;
-	// extract claims from config
-	let claims = Claims::new(claims);
 
 	// build the server
 	let server = HttpServer::new(move || {
-		App::new()
+		let mut app = App::new()
 			.wrap(middleware::Logger::default())
 			.wrap(middleware::Compress::default())
-			.wrap( CacheHeaders::new(config.cache.clone()))
-			.data(config.clone())
-			.data(tx.clone())
-			.data(jwks.clone())
-			.data(claims.clone())
-			.service(upload)
-			.configure(|cfg| {
-				config.routes.iter().fold(cfg, |cfg, (path, _)| {
+			.wrap(middleware::Condition::new(
+				config.cache.is_some(),
+				CacheHeaders::new(config.cache.clone()),
+			))
+			.data(tx.clone());
+		if let Some(jwt) = config.jwt.clone() {
+			app = app.service(
+				web::resource("/upload")
+					.wrap(JwtAuth::new(jwt))
+					.route(web::post().to(upload)),
+			);
+		}
+		if let Some(routes) = config.routes.clone() {
+			app = app.configure(|cfg| {
+				routes.iter().fold(cfg, |cfg, (path, _)| {
 					cfg.route(&path, web::get().to(route_path))
 				});
 			})
-			.service(Files::new("/", &config.root).index_file("index.html"))
+		}
+		app.service(Files::new("/", &config.root).index_file("index.html"))
 	});
 
 	// bind to http or https
@@ -201,9 +207,9 @@ fn main() -> anyhow::Result<()> {
 		.init();
 
 	// read command line options
-	let opts: Opts = argh::from_env();
+	let args: Opts = args::from_env();
 	// read yaml config
-	let mut config = Config::read(&opts.config)?;
+	let mut config = Config::read(&args.config)?;
 	// join dir and root
 	config.root = config.dir.join(config.root);
 
@@ -211,7 +217,7 @@ fn main() -> anyhow::Result<()> {
 	let mut system = actix_web::rt::System::new("main");
 	loop {
 		let reloaded =
-			system.block_on::<_, anyhow::Result<bool>>(serve(config.clone(), opts.addr.clone()))?;
+			system.block_on::<_, anyhow::Result<bool>>(serve(config.clone(), args.addr.clone()))?;
 		if reloaded {
 			log::info!("restart server");
 		} else {
