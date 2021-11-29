@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "actix-cachecontrol-middleware"
 version = "0.1.0"
-source = "git+https://github.com/eburghar/actix-cachecontrol-middleware.git?branch=master#b50e4665040f05f096e601d7adc2ca1d47477974"
+source = "git+https://github.com/eburghar/actix-cachecontrol-middleware.git?branch=master#07140e6053110571c040aa88374206a3d55567fb"
 dependencies = [
  "actix-service",
  "actix-web",
@@ -254,7 +254,7 @@ dependencies = [
 [[package]]
 name = "actix-token-middleware"
 version = "0.2.0"
-source = "git+https://github.com/eburghar/actix-token-middleware.git?branch=master#6fd8c4d514df06c448eb5e94dd3bad50ae099d9a"
+source = "git+https://github.com/eburghar/actix-token-middleware.git?branch=master#b3f3129c63698d4fac16e3b93e848a71a8ba1ce5"
 dependencies = [
  "actix-service",
  "actix-web",

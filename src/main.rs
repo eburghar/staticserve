@@ -22,12 +22,19 @@ use std::{
 	env,
 	fs::{create_dir_all, File},
 	io::{BufReader, Write},
-	path::Path,
+	path::{PathBuf, Path},
 	sync::{mpsc, Arc},
 	thread,
 };
 
 type Sender = mpsc::Sender<()>;
+
+#[derive(Clone)]
+/// Structure to pass state through routes and resources
+struct AppState {
+	dir: PathBuf,
+	tx: Sender,
+}
 
 const INDEX: &str = r#"<!DOCTYPE html>
 <html lang="en">
@@ -41,11 +48,9 @@ const INDEX: &str = r#"<!DOCTYPE html>
 </html>"#;
 
 /// upload an unpack a new archive in destination directory. the url is protected by a token
-//#[post("/upload", wrap = "JwtAuth")]
 async fn upload(
 	mut payload: Multipart,
-	config: web::Data<Config>,
-	sender: web::Data<Sender>,
+	state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error> {
 	// iterate over multipart stream
 	while let Some(field) = payload.try_next().await? {
@@ -59,14 +64,14 @@ async fn upload(
 			log::info!("untar {}", filename);
 			if filename.ends_with(".tar") {
 				Archive::new(FieldReader::new(field))
-					.unpack(&config.dir)
+					.unpack(&state.dir)
 					.await?;
-				let _ = sender.send(());
+				let _ = state.tx.send(());
 			} else if filename.ends_with("tar.zst") {
 				Archive::new(ZstdDecoder::new(FieldReader::new(field)))
-					.unpack(&config.dir)
+					.unpack(&state.dir)
 					.await?;
-				let _ = sender.send(());
+				let _ = state.tx.send(());
 			}
 		}
 	}
@@ -90,7 +95,10 @@ async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::R
 async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 	// set keys from jwks endpoint
 	if let Some(ref mut jwt) = config.jwt {
-		let _ = jwt.set_keys().await.map_err(|e| anyhow!("failed to get jkws keys {}", e))?;
+		let _ = jwt
+			.set_keys()
+			.await
+			.map_err(|e| anyhow!("failed to get jkws keys {}", e))?;
 	}
 
 	// create directory with index.html
@@ -110,6 +118,11 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 	// copy some values before config is moved
 	let tls = config.tls.clone();
 
+	let state = AppState {
+		dir: config.dir.to_owned(),
+		tx,
+	};
+
 	// build the server
 	let server = HttpServer::new(move || {
 		let mut app = App::new()
@@ -119,7 +132,7 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 				config.cache.is_some(),
 				CacheHeaders::new(config.cache.clone()),
 			))
-			.data(tx.clone());
+			.data(state.clone());
 		if let Some(jwt) = config.jwt.clone() {
 			app = app.service(
 				web::resource("/upload")

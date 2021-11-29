@@ -16,7 +16,7 @@ It uses the [fast rustls](https://jbp.io/2019/07/01/rustls-vs-openssl-performanc
 ## Usage
 
 ```
-staticserve 0.3.0
+staticserve 0.4.0
 
 Usage: staticserve [-c <config>] [-v] [-a <addr>]
 
