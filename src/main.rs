@@ -22,7 +22,7 @@ use std::{
 	env,
 	fs::{create_dir_all, File},
 	io::{BufReader, Write},
-	path::{PathBuf, Path},
+	path::Path,
 	sync::{mpsc, Arc},
 	thread,
 };
@@ -32,7 +32,7 @@ type Sender = mpsc::Sender<()>;
 #[derive(Clone)]
 /// Structure to pass state through routes and resources
 struct AppState {
-	dir: PathBuf,
+	config: Config,
 	tx: Sender,
 }
 
@@ -48,10 +48,7 @@ const INDEX: &str = r#"<!DOCTYPE html>
 </html>"#;
 
 /// upload an unpack a new archive in destination directory. the url is protected by a token
-async fn upload(
-	mut payload: Multipart,
-	state: web::Data<AppState>,
-) -> Result<HttpResponse, Error> {
+async fn upload(mut payload: Multipart, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
 	// iterate over multipart stream
 	while let Some(field) = payload.try_next().await? {
 		let filename = field
@@ -64,12 +61,12 @@ async fn upload(
 			log::info!("untar {}", filename);
 			if filename.ends_with(".tar") {
 				Archive::new(FieldReader::new(field))
-					.unpack(&state.dir)
+					.unpack(&state.config.dir)
 					.await?;
 				let _ = state.tx.send(());
 			} else if filename.ends_with("tar.zst") {
 				Archive::new(ZstdDecoder::new(FieldReader::new(field)))
-					.unpack(&state.dir)
+					.unpack(&state.config.dir)
 					.await?;
 				let _ = state.tx.send(());
 			}
@@ -79,14 +76,15 @@ async fn upload(
 }
 
 /// Serve associated files for dynamic routes
-async fn route_path(req: HttpRequest, config: web::Data<Config>) -> actix_web::Result<NamedFile> {
+async fn route_path(req: HttpRequest, state: web::Data<AppState>) -> actix_web::Result<NamedFile> {
 	// we are sure that there is a match_pattern and a corresponding value in config.routes hashmap
 	// because this handler has been configured from it: unwrap should never panic
-	if let Some(ref routes) = config.routes {
+	if let Some(ref routes) = state.config.routes {
 		let path = req.match_pattern().unwrap();
-		let file = Path::new(&config.root).join(routes.get(&path).unwrap());
+		let file = Path::new(&state.config.root).join(routes.get(&path).unwrap());
 		Ok(NamedFile::open(file)?)
 	} else {
+		// shouldn't panic as the service is only activated if state.config.routes != None
 		panic!("routes is not configured");
 	}
 }
@@ -118,10 +116,8 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 	// copy some values before config is moved
 	let tls = config.tls.clone();
 
-	let state = AppState {
-		dir: config.dir.to_owned(),
-		tx,
-	};
+	// initialize the state shared among routes and services
+	let state = AppState { config: config, tx };
 
 	// build the server
 	let server = HttpServer::new(move || {
@@ -129,25 +125,25 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 			.wrap(middleware::Logger::default())
 			.wrap(middleware::Compress::default())
 			.wrap(middleware::Condition::new(
-				config.cache.is_some(),
-				CacheHeaders::new(config.cache.clone()),
+				state.config.cache.is_some(),
+				CacheHeaders::new(state.config.cache.clone()),
 			))
 			.data(state.clone());
-		if let Some(jwt) = config.jwt.clone() {
+		if let Some(jwt) = state.config.jwt.clone() {
 			app = app.service(
 				web::resource("/upload")
 					.wrap(JwtAuth::new(jwt))
 					.route(web::post().to(upload)),
 			);
 		}
-		if let Some(routes) = config.routes.clone() {
+		if let Some(routes) = state.config.routes.clone() {
 			app = app.configure(|cfg| {
 				routes.iter().fold(cfg, |cfg, (path, _)| {
 					cfg.route(&path, web::get().to(route_path))
 				});
 			})
 		}
-		app.service(Files::new("/", &config.root).index_file("index.html"))
+		app.service(Files::new("/", &state.config.root).index_file("index.html"))
 	});
 
 	// bind to http or https

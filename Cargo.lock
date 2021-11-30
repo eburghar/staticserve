@@ -5,13 +5,13 @@ version = 3
 [[package]]
 name = "actix-cachecontrol-middleware"
 version = "0.1.0"
-source = "git+https://github.com/eburghar/actix-cachecontrol-middleware.git?branch=master#07140e6053110571c040aa88374206a3d55567fb"
+source = "git+https://github.com/eburghar/actix-cachecontrol-middleware.git?branch=master#dd667fcf6e50e3de680d8ba4f587b11b866ea466"
 dependencies = [
  "actix-service",
  "actix-web",
- "deser-mapvec",
  "futures",
  "serde",
+ "serde-vecmap",
 ]
 
 [[package]]
@@ -254,15 +254,15 @@ dependencies = [
 [[package]]
 name = "actix-token-middleware"
 version = "0.2.0"
-source = "git+https://github.com/eburghar/actix-token-middleware.git?branch=master#b3f3129c63698d4fac16e3b93e848a71a8ba1ce5"
+source = "git+https://github.com/eburghar/actix-token-middleware.git?branch=master#54a599cd33d84e9bac61fce8e9f2c6405152cb1f"
 dependencies = [
  "actix-service",
  "actix-web",
- "deser-mapvec",
  "futures",
  "jsonwebkey",
  "jsonwebtoken",
  "serde",
+ "serde-vecmap",
  "serde_json",
  "thiserror",
 ]
@@ -355,9 +355,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.50"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc78c299ae753905840c5d3ba036c51f61ce5a98a83f98d9c9d29dffd427f71"
+checksum = "8b26702f315f53b6071259e15dd9d64528213b44d61de1ec926eca7715d62203"
 
 [[package]]
 name = "argh"
@@ -846,14 +846,6 @@ dependencies = [
  "quote",
  "rustc_version 0.4.0",
  "syn",
-]
-
-[[package]]
-name = "deser-mapvec"
-version = "0.1.0"
-source = "git+https://github.com/eburghar/deser-mapvec.git?branch=master#cc1527046cb80b52f48965ac21b12c60cc6c874d"
-dependencies = [
- "serde",
 ]
 
 [[package]]
@@ -1908,6 +1900,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-vecmap"
+version = "0.1.0"
+source = "git+https://github.com/eburghar/serde-vecmap.git?branch=master#9368fa627fb8393043b2687b9fc9ebd60bfa1c74"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2064,7 +2064,6 @@ dependencies = [
  "argh",
  "async-compression",
  "async-tar",
- "deser-mapvec",
  "env_logger",
  "futures",
  "log",

@@ -21,15 +21,14 @@ rustls = "0.18"
 sanitize-filename = "0.3.0"
 serde = "1.0.117"
 serde_yaml = "0.8.14"
-actix-token-middleware = "0.2"
-actix-cachecontrol-middleware = "0.1"
+actix-token-middleware = "0.2.0"
+actix-cachecontrol-middleware = "0.1.0"
 actix-service = "1"
-deser-mapvec = "0.1"
 
 [patch.crates-io]
 actix-token-middleware = { git = "https://github.com/eburghar/actix-token-middleware.git", branch = "master" }
 #actix-token-middleware = { path = "../actix-token-middleware" }
 actix-cachecontrol-middleware = { git = "https://github.com/eburghar/actix-cachecontrol-middleware.git", branch = "master" }
 #actix-cachecontrol-middleware = { path = "../actix-cachecontrol-middleware" }
-deser-mapvec = { git = "https://github.com/eburghar/deser-mapvec.git", branch = "master" }
-#deser-mapvec = { path = "../deser-mapvec" }
+serde-vecmap = { git = "https://github.com/eburghar/serde-vecmap.git", branch = "master" }
+#serde-vecmap = { path = "../serde-vecmap" }

@@ -26,10 +26,10 @@ pub struct Config {
 	pub tls: Option<Tls>,
 	/// dynamic routes pointing to static files
 	pub routes: Option<HashMap<String, String>>,
-	/// jwks endpoint
+	/// jwt configuration
 	pub jwt: Option<Jwt>,
 	/// cache control configuration
-	pub cache: Option<CacheControl>,
+	pub cache: Option<CacheControl>
 }
 
 impl Config {
