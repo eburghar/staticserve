@@ -129,14 +129,14 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 				CacheHeaders::new(state.config.cache.clone()),
 			))
 			.data(state.clone());
-		if let Some(jwt) = state.config.jwt.clone() {
+		if let Some(ref jwt) = state.config.jwt {
 			app = app.service(
 				web::resource("/upload")
-					.wrap(JwtAuth::new(jwt))
+					.wrap(JwtAuth::new(jwt.clone()))
 					.route(web::post().to(upload)),
 			);
 		}
-		if let Some(routes) = state.config.routes.clone() {
+		if let Some(ref routes) = state.config.routes {
 			app = app.configure(|cfg| {
 				routes.iter().fold(cfg, |cfg, (path, _)| {
 					cfg.route(&path, web::get().to(route_path))

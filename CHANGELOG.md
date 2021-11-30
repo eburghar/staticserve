@@ -1,3 +1,9 @@
+## 0.4.1 - 2021-11-30
+
+### Miscellaneous Chores
+
+36949a - update packages - Éric BURGHARD
+
 ## 0.4.0 - 2021-11-29
 
 ### Features
