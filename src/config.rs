@@ -15,6 +15,20 @@ pub struct Tls {
 	pub key: PathBuf,
 }
 
+fn default_status() -> u16 {
+    200
+}
+
+#[derive(Deserialize, Clone)]
+/// Default page configutation
+pub struct DefaultPage {
+    /// default file relative to root
+    pub file: PathBuf,
+    /// default status
+    #[serde(default = "default_status")]
+    pub status: u16
+}
+
 /// Config file
 #[derive(Deserialize, Clone)]
 pub struct Config {
@@ -29,7 +43,9 @@ pub struct Config {
 	/// jwt configuration
 	pub jwt: Option<Jwt>,
 	/// cache control configuration
-	pub cache: Option<CacheControl>
+	pub cache: Option<CacheControl>,
+    /// default page
+    pub default: Option<DefaultPage>
 }
 
 impl Config {
