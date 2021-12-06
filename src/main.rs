@@ -8,7 +8,11 @@ use actix_cachecontrol_middleware::middleware::CacheHeaders;
 use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
 use actix_token_middleware::middleware::jwtauth::JwtAuth;
-use actix_web::{middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use actix_web::{
+	dev::{ServiceRequest, ServiceResponse},
+	http::StatusCode,
+	middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer,
+};
 use anyhow::{anyhow, Context};
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
@@ -143,7 +147,29 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 				});
 			})
 		}
-		app.service(Files::new("/", &state.config.root).index_file("index.html"))
+		app.service(
+			Files::new("/", &state.config.root)
+				.prefer_utf8(true)
+				.default_handler(|req: ServiceRequest| async {
+					let default = req
+						.app_data::<web::Data<AppState>>()
+						.map_or(None, |state| state.config.default.clone());
+					let (http_req, _) = req.into_parts();
+					if let Some(default) = default {
+						let mut response =
+							actix_files::NamedFile::open(default.file)?.into_response(&http_req)?;
+						*response.status_mut() =
+							StatusCode::from_u16(default.status).unwrap_or(StatusCode::NOT_FOUND);
+						Ok(ServiceResponse::new(http_req, response))
+					} else {
+						Ok(ServiceResponse::new(
+							http_req,
+							HttpResponse::new(StatusCode::NOT_FOUND),
+						))
+					}
+				})
+				.index_file("index.html"),
+		)
 	});
 
 	// bind to http or https
@@ -221,6 +247,10 @@ fn main() -> anyhow::Result<()> {
 	let mut config = Config::read(&args.config)?;
 	// join dir and root
 	config.root = config.dir.join(config.root);
+	// join root and default file
+	if let Some(ref mut default) = config.default {
+		default.file = config.root.clone().join(&default.file);
+	}
 
 	// start actix main loop
 	let mut system = actix_web::rt::System::new("main");

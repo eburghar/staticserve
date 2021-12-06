@@ -1,9 +1,9 @@
 [package]
 name = "staticserve"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["Éric BURGHARD <eric@itsufficient.me>"]
 edition = "2018"
-description = "Static file server with ability to upload content and define dynamic routes"
+description = "A simple and fast async http(s) server for hosting static website (JAMSTACK) under kubernetes."
 
 [dependencies]
 actix-files = "0.4.0"
