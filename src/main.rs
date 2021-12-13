@@ -58,7 +58,7 @@ async fn upload(mut payload: Multipart, state: web::Data<AppState>) -> Result<Ht
 		let filename = field
 			.content_disposition()
 			.filter(|cd| cd.get_name() == Some("file"))
-			.map(|cd| cd.get_filename().map(|f| sanitize(f)))
+			.map(|cd| cd.get_filename().map(sanitize))
 			.flatten();
 
 		if let Some(filename) = filename {
@@ -121,7 +121,7 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 	let tls = config.tls.clone();
 
 	// initialize the state shared among routes and services
-	let state = AppState { config: config, tx };
+	let state = AppState { config, tx };
 
 	// build the server
 	let server = HttpServer::new(move || {
@@ -143,7 +143,7 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 		if let Some(ref routes) = state.config.routes {
 			app = app.configure(|cfg| {
 				routes.iter().fold(cfg, |cfg, (path, _)| {
-					cfg.route(&path, web::get().to(route_path))
+					cfg.route(path, web::get().to(route_path))
 				});
 			})
 		}
@@ -153,7 +153,7 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 				.default_handler(|req: ServiceRequest| async {
 					let default = req
 						.app_data::<web::Data<AppState>>()
-						.map_or(None, |state| state.config.default.clone());
+						.and_then(|state| state.config.default.clone());
 					let (http_req, _) = req.into_parts();
 					if let Some(default) = default {
 						let mut response =
@@ -188,11 +188,11 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 		let no_key = || anyhow!("no key found in {:?}", &tls.key);
 		let mut keys = rsa_private_keys(&mut BufReader::new(File::open(&tls.key)?))
 			.map_err(invalid_key)
-			.and_then(|x| (!x.is_empty()).then(|| x).ok_or(no_key()))
+			.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
 			.or_else(|_| {
 				pkcs8_private_keys(&mut BufReader::new(File::open(&tls.key)?))
 					.map_err(invalid_key)
-					.and_then(|x| (!x.is_empty()).then(|| x).ok_or(no_key()))
+					.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
 			})?;
 		tls_config
 			.set_single_cert(crt_chain, keys.remove(0))
@@ -236,9 +236,9 @@ fn main() -> anyhow::Result<()> {
 	// setup logging
 	env_logger::Builder::new()
 		.parse_filters(
-			&env::var("RUST_LOG".to_owned())
-				.unwrap_or("staticserve=info,actix_web=info".to_owned()),
+			&env::var("RUST_LOG").unwrap_or_else(|_| "staticserve=info,actix_web=info".to_owned()),
 		)
+		.parse_write_style(&env::var("RUST_LOG_STYLE").unwrap_or_else(|_| "auto".to_owned()))
 		.init();
 
 	// read command line options

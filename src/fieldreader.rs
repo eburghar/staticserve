@@ -27,7 +27,7 @@ impl FieldReader {
 	}
 
 	/// Do we have a chunk and is it non-empty?
-	fn has_chunk(self: &Self) -> bool {
+	fn has_chunk(&self) -> bool {
 		self.chunk
 			.as_ref()
 			.map_or_else(|| false, |chunk| chunk.has_remaining())
