@@ -2052,7 +2052,7 @@ dependencies = [
 
 [[package]]
 name = "staticserve"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "actix-cachecontrol-middleware",
  "actix-files",

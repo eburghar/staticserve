@@ -1,10 +1,10 @@
+use actix_cachecontrol_middleware::data::CacheControl;
+use actix_token_middleware::data::Jwt;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
-use actix_cachecontrol_middleware::data::CacheControl;
-use actix_token_middleware::data::Jwt;
 
 #[derive(Deserialize, Clone)]
 /// Tls configuration
@@ -16,17 +16,17 @@ pub struct Tls {
 }
 
 fn default_status() -> u16 {
-    200
+	200
 }
 
 #[derive(Deserialize, Clone)]
 /// Default page configutation
 pub struct DefaultPage {
-    /// default file relative to root
-    pub file: PathBuf,
-    /// default status
-    #[serde(default = "default_status")]
-    pub status: u16
+	/// default file relative to root
+	pub file: PathBuf,
+	/// default status
+	#[serde(default = "default_status")]
+	pub status: u16,
 }
 
 /// Config file
@@ -44,8 +44,8 @@ pub struct Config {
 	pub jwt: Option<Jwt>,
 	/// cache control configuration
 	pub cache: Option<CacheControl>,
-    /// default page
-    pub default: Option<DefaultPage>
+	/// default page
+	pub default: Option<DefaultPage>,
 }
 
 impl Config {

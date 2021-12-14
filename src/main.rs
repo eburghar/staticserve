@@ -23,7 +23,6 @@ use rustls::{
 };
 use sanitize_filename::sanitize;
 use std::{
-	env,
 	fs::{create_dir_all, File},
 	io::{BufReader, Write},
 	path::Path,
@@ -234,13 +233,11 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 
 fn main() -> anyhow::Result<()> {
 	// setup logging
-	env_logger::Builder::new()
-		.parse_filters(
-			&env::var("RUST_LOG").unwrap_or_else(|_| "staticserve=info,actix_web=info".to_owned()),
-		)
-		.parse_write_style(&env::var("RUST_LOG_STYLE").unwrap_or_else(|_| "auto".to_owned()))
-		.init();
-
+	env_logger::init_from_env(
+		env_logger::Env::new()
+			.default_filter_or("staticserve=info,actix_web=info")
+			.default_write_style_or("auto"),
+	);
 	// read command line options
 	let args: Opts = args::from_env();
 	// read yaml config

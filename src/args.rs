@@ -5,7 +5,7 @@ use std::path::Path;
 /// Static file server with ability to upload content and define dynamic routes
 pub struct Opts {
 	/// configuration file containing projects and gitlab connection parameters
-	#[argh(option, short = 'c', default="\"/etc/staticserve.yaml\".to_owned()")]
+	#[argh(option, short = 'c', default = "\"/etc/staticserve.yaml\".to_owned()")]
 	pub config: String,
 
 	/// more detailed output
@@ -13,7 +13,7 @@ pub struct Opts {
 	pub verbose: bool,
 
 	/// addr:port to bind to
-	#[argh(option, short = 'a', default="\"0.0.0.0:8080\".to_owned()")]
+	#[argh(option, short = 'a', default = "\"0.0.0.0:8080\".to_owned()")]
 	pub addr: String,
 }
 
