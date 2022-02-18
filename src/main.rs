@@ -2,7 +2,11 @@ mod args;
 mod config;
 mod fieldreader;
 
-use crate::{args::Opts, config::Config, fieldreader::FieldReader};
+use crate::{
+	args::Opts,
+	config::{Config, HookType},
+	fieldreader::FieldReader,
+};
 
 use actix_cachecontrol_middleware::middleware::CacheHeaders;
 use actix_files::{Files, NamedFile};
@@ -74,6 +78,10 @@ async fn upload(mut payload: Multipart, state: web::Data<AppState>) -> Result<Ht
 				let _ = state.tx.send(());
 			}
 		}
+		// trigger updated hooks
+		if let Some(ref hooks) = state.config.hooks {
+			hooks.trigger(HookType::Updated);
+		}
 	}
 	Ok(HttpResponse::Ok().into())
 }
@@ -138,6 +146,9 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 					.wrap(JwtAuth::new(jwt.clone()))
 					.route(web::post().to(upload)),
 			);
+		} else {
+			log::warn!("upload is not protect by an authorization token. Use only for development");
+			app = app.service(web::resource("upload").route(web::post().to(upload)));
 		}
 		if let Some(ref routes) = state.config.routes {
 			app = app.configure(|cfg| {
@@ -232,14 +243,17 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 }
 
 fn main() -> anyhow::Result<()> {
+	// read command line options
+	let args: Opts = args::from_env();
+
 	// setup logging
 	env_logger::init_from_env(
 		env_logger::Env::new()
 			.default_filter_or("staticserve=info,actix_web=info")
 			.default_write_style_or("auto"),
 	);
-	// read command line options
-	let args: Opts = args::from_env();
+	log::info!("{} v{}", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"));
+
 	// read yaml config
 	let mut config = Config::read(&args.config)?;
 	// join dir and root
