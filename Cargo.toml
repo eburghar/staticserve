@@ -1,34 +1,34 @@
 [package]
 name = "staticserve"
-version = "0.5.2"
+version = "0.6.0"
 authors = ["Éric BURGHARD <eric@itsufficient.me>"]
-edition = "2018"
+edition = "2021"
 description = "A simple and fast async http(s) server for hosting static website (JAMSTACK) under kubernetes."
 
 [dependencies]
-actix-files = "0.4.0"
-actix-multipart = "0.3.0"
-actix-web = { version = "3", features = ["compress", "rustls"] }
-anyhow = "1.0.34"
-argh = "0.1.4"
-async-compression = { version="0.3.7", features=["futures-io", "zstd"] }
-async-tar = "0.3.0"
-env_logger = "0.8.2"
-futures = "0.3.8"
-log = "0.4.11"
-pin-project-lite = "0.2.6"
-rustls = "0.18"
-sanitize-filename = "0.3.0"
-serde = "1.0.117"
-serde_yaml = "0.8.14"
-actix-token-middleware = "0.2.0"
-actix-cachecontrol-middleware = "0.1.0"
-actix-service = "1"
+actix-files = "0.6"
+actix-multipart = "0.4"
+actix-web = { version = "4", features = ["rustls", "compress-gzip", "compress-brotli"] }
+anyhow = "1.0"
+argh = "0.1"
+async-compression = { version="0.3", features=["futures-io", "zstd"] }
+async-tar = "0.3"
+env_logger = "0.8"
+futures = "0.3"
+log = "0.4"
+pin-project-lite = "0.2"
+rustls = "0.20"
+rustls-pemfile = "1"
+sanitize-filename = "0.3"
+serde = "1.0"
+serde_yaml = "0.8"
+actix-token-middleware = "0.3"
+actix-cachecontrol-middleware = "0.2"
 
 [patch.crates-io]
-actix-token-middleware = { git = "https://github.com/eburghar/actix-token-middleware.git", branch = "master" }
-#actix-token-middleware = { path = "../actix-token-middleware" }
-actix-cachecontrol-middleware = { git = "https://github.com/eburghar/actix-cachecontrol-middleware.git", branch = "master" }
-#actix-cachecontrol-middleware = { path = "../actix-cachecontrol-middleware" }
+# actix-token-middleware = { git = "https://github.com/eburghar/actix-token-middleware.git", branch = "master" }
+actix-token-middleware = { path = "../actix-token-middleware" }
+# actix-cachecontrol-middleware = { git = "https://github.com/eburghar/actix-cachecontrol-middleware.git", branch = "master" }
+actix-cachecontrol-middleware = { path = "../actix-cachecontrol-middleware" }
 serde-vecmap = { git = "https://github.com/eburghar/serde-vecmap.git", branch = "master" }
 #serde-vecmap = { path = "../serde-vecmap" }

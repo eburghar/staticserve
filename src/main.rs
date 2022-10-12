@@ -21,9 +21,11 @@ use anyhow::{anyhow, Context};
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::{executor, stream::TryStreamExt};
+use rustls_pemfile::{read_one};
 use rustls::{
-	internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
-	NoClientAuth, ServerConfig,
+	//internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
+	//NoClientAuth
+	ServerConfig,
 };
 use sanitize_filename::sanitize;
 use std::{
@@ -188,7 +190,12 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 		let mut tls_config = ServerConfig::new(NoClientAuth::new());
 
 		// Parse the certificate and set it in the configuration
-		let crt_chain = certs(&mut BufReader::new(
+		// let crt_chain = certs(&mut BufReader::new(
+		// 	File::open(&tls.crt).with_context(|| format!("unable to read {:?}", &tls.crt))?,
+		// ))
+		// .map_err(|_| anyhow!("error reading certificate"))?;
+
+		let crt_chain = read_one(&mut BufReader::new(
 			File::open(&tls.crt).with_context(|| format!("unable to read {:?}", &tls.crt))?,
 		))
 		.map_err(|_| anyhow!("error reading certificate"))?;
