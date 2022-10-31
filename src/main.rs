@@ -15,18 +15,16 @@ use actix_token_middleware::middleware::jwtauth::JwtAuth;
 use actix_web::{
 	dev::{ServiceRequest, ServiceResponse},
 	http::StatusCode,
-	middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer,
+	middleware,
+	web::{self, Data},
+	App, Error, HttpRequest, HttpResponse, HttpServer,
 };
 use anyhow::{anyhow, Context};
 use async_compression::futures::bufread::ZstdDecoder;
 use async_tar::Archive;
 use futures::{executor, stream::TryStreamExt};
-use rustls_pemfile::{read_one};
-use rustls::{
-	//internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
-	//NoClientAuth
-	ServerConfig,
-};
+use rustls::{Certificate, PrivateKey, ServerConfig};
+use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use sanitize_filename::sanitize;
 use std::{
 	fs::{create_dir_all, File},
@@ -60,13 +58,15 @@ const INDEX: &str = r#"<!DOCTYPE html>
 async fn upload(mut payload: Multipart, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
 	// iterate over multipart stream
 	while let Some(field) = payload.try_next().await? {
-		let filename = field
+		let filenames: Vec<String> = field
 			.content_disposition()
-			.filter(|cd| cd.get_name() == Some("file"))
-			.map(|cd| cd.get_filename().map(sanitize))
-			.flatten();
+			.parameters
+			.iter()
+			.filter(|param| param.is_filename())
+			.map(|cd| cd.as_filename().map(sanitize).unwrap())
+			.collect();
 
-		if let Some(filename) = filename {
+		if let Some(filename) = filenames.get(0) {
 			log::info!("untar {}", filename);
 			if filename.ends_with(".tar") {
 				Archive::new(FieldReader::new(field))
@@ -106,8 +106,7 @@ async fn route_path(req: HttpRequest, state: web::Data<AppState>) -> actix_web::
 async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 	// set keys from jwks endpoint
 	if let Some(ref mut jwt) = config.jwt {
-		let _ = jwt
-			.set_keys()
+		jwt.set_keys()
 			.await
 			.map_err(|e| anyhow!("failed to get jkws keys {}", e))?;
 	}
@@ -141,7 +140,8 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 				state.config.cache.is_some(),
 				CacheHeaders::new(state.config.cache.clone()),
 			))
-			.data(state.clone());
+			.app_data(Data::new(state.clone()));
+		// add upload service
 		if let Some(ref jwt) = state.config.jwt {
 			app = app.service(
 				web::resource("/upload")
@@ -152,15 +152,18 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 			log::warn!("upload is not protect by an authorization token. Use only for development");
 			app = app.service(web::resource("upload").route(web::post().to(upload)));
 		}
+		// add configured routes
 		if let Some(ref routes) = state.config.routes {
-			app = app.configure(|cfg| {
-				routes.iter().fold(cfg, |cfg, (path, _)| {
-					cfg.route(path, web::get().to(route_path))
-				});
-			})
+			for (path, dest) in routes.iter() {
+				log::debug!("add route {} -> {}", path, dest);
+				app = app.route(path, web::get().to(route_path));
+			}
 		}
+		// add static file service
 		app.service(
 			Files::new("/", &state.config.root)
+				// TODO: add an option in the config file
+				// .use_hidden_files()
 				.prefer_utf8(true)
 				.default_handler(|req: ServiceRequest| async {
 					let default = req
@@ -169,7 +172,7 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 					let (http_req, _) = req.into_parts();
 					if let Some(default) = default {
 						let mut response =
-							actix_files::NamedFile::open(default.file)?.into_response(&http_req)?;
+							actix_files::NamedFile::open(default.file)?.into_response(&http_req);
 						*response.status_mut() =
 							StatusCode::from_u16(default.status).unwrap_or(StatusCode::NOT_FOUND);
 						Ok(ServiceResponse::new(http_req, response))
@@ -187,32 +190,37 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 	// bind to http or https
 	let server = if let Some(ref tls) = tls {
 		// Create tls config
-		let mut tls_config = ServerConfig::new(NoClientAuth::new());
+		let config = ServerConfig::builder()
+			.with_safe_defaults()
+			.with_no_client_auth();
 
-		// Parse the certificate and set it in the configuration
-		// let crt_chain = certs(&mut BufReader::new(
-		// 	File::open(&tls.crt).with_context(|| format!("unable to read {:?}", &tls.crt))?,
-		// ))
-		// .map_err(|_| anyhow!("error reading certificate"))?;
-
-		let crt_chain = read_one(&mut BufReader::new(
+		let crt_chain = certs(&mut BufReader::new(
 			File::open(&tls.crt).with_context(|| format!("unable to read {:?}", &tls.crt))?,
 		))
-		.map_err(|_| anyhow!("error reading certificate"))?;
+		.map_err(|_| anyhow!("error reading certificate"))?
+		.into_iter()
+		.map(Certificate)
+		.collect();
 
 		// Parse the key in RSA or PKCS8 format
 		let invalid_key = |_| anyhow!("invalid key in {:?}", &tls.key);
 		let no_key = || anyhow!("no key found in {:?}", &tls.key);
-		let mut keys = rsa_private_keys(&mut BufReader::new(File::open(&tls.key)?))
-			.map_err(invalid_key)
-			.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
-			.or_else(|_| {
-				pkcs8_private_keys(&mut BufReader::new(File::open(&tls.key)?))
-					.map_err(invalid_key)
-					.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
-			})?;
-		tls_config
-			.set_single_cert(crt_chain, keys.remove(0))
+		let mut keys: Vec<PrivateKey> =
+			rsa_private_keys(&mut BufReader::new(File::open(&tls.key)?))
+				.map_err(invalid_key)
+				// return an error if there is no key
+				.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
+				.or_else(|_| {
+					pkcs8_private_keys(&mut BufReader::new(File::open(&tls.key)?))
+						.map_err(invalid_key)
+						// return an error if there is no key
+						.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
+				})?
+				.into_iter()
+				.map(PrivateKey)
+				.collect();
+		let tls_config = config
+			.with_single_cert(crt_chain, keys.swap_remove(0))
 			.with_context(|| "error setting crt/key pair")?;
 		server
 			.bind_rustls(&addr, tls_config)
@@ -227,14 +235,14 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 	};
 
 	// wait for reload message in a separate thread as recv call is blocking
-	let srv = server.clone();
+	let srv = server.handle();
 	// use an arc to know if the thread went up to completion (ie reload was triggered)
 	let reloaded = Arc::new(());
 	let reloaded_wk = Arc::downgrade(&reloaded);
 	thread::spawn(move || {
 		// void statement to move 'reloaded' to the closure
 		let _ = reloaded;
-		rx.recv().unwrap_or_else(|_| {});
+		rx.recv().unwrap_or(());
 		executor::block_on(srv.stop(true))
 	});
 
@@ -271,10 +279,9 @@ fn main() -> anyhow::Result<()> {
 	}
 
 	// start actix main loop
-	let mut system = actix_web::rt::System::new("main");
+	let system = actix_web::rt::System::new();
 	loop {
-		let reloaded =
-			system.block_on::<_, anyhow::Result<bool>>(serve(config.clone(), args.addr.clone()))?;
+		let reloaded = system.block_on(serve(config.clone(), args.addr.clone()))?;
 		if reloaded {
 			log::info!("restart server");
 		} else {

@@ -8,10 +8,14 @@ description = "A simple and fast async http(s) server for hosting static website
 [dependencies]
 actix-files = "0.6"
 actix-multipart = "0.4"
-actix-web = { version = "4", features = ["rustls", "compress-gzip", "compress-brotli"] }
+actix-web = { version = "4", default-features = false, features = [
+  "rustls",
+  "compress-gzip",
+  "compress-brotli",
+] }
 anyhow = "1.0"
 argh = "0.1"
-async-compression = { version="0.3", features=["futures-io", "zstd"] }
+async-compression = { version = "0.3", features = ["futures-io", "zstd"] }
 async-tar = "0.3"
 env_logger = "0.8"
 futures = "0.3"
@@ -26,9 +30,9 @@ actix-token-middleware = "0.3"
 actix-cachecontrol-middleware = "0.2"
 
 [patch.crates-io]
-# actix-token-middleware = { git = "https://github.com/eburghar/actix-token-middleware.git", branch = "master" }
-actix-token-middleware = { path = "../actix-token-middleware" }
-# actix-cachecontrol-middleware = { git = "https://github.com/eburghar/actix-cachecontrol-middleware.git", branch = "master" }
-actix-cachecontrol-middleware = { path = "../actix-cachecontrol-middleware" }
+actix-token-middleware = { git = "https://github.com/eburghar/actix-token-middleware.git", branch = "master" }
+# actix-token-middleware = { path = "../actix-token-middleware" }
+actix-cachecontrol-middleware = { git = "https://github.com/eburghar/actix-cachecontrol-middleware.git", branch = "master" }
+# actix-cachecontrol-middleware = { path = "../actix-cachecontrol-middleware" }
 serde-vecmap = { git = "https://github.com/eburghar/serde-vecmap.git", branch = "master" }
 #serde-vecmap = { path = "../serde-vecmap" }
