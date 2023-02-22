@@ -1,6 +1,6 @@
 [package]
 name = "staticserve"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Éric BURGHARD <eric@itsufficient.me>"]
 edition = "2021"
 description = "A simple and fast async http(s) server for hosting static website (JAMSTACK) under kubernetes."
