@@ -97,7 +97,12 @@ async fn route_path(req: HttpRequest, state: web::Data<AppState>) -> actix_web::
 }
 
 /// Serve static files on addr
-async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
+async fn serve(
+	mut config: Config,
+	secure: bool,
+	addrs: String,
+	addr: String,
+) -> anyhow::Result<bool> {
 	// set keys from jwks endpoint
 	if let Some(ref mut jwt) = config.jwt {
 		jwt.set_keys()
@@ -217,15 +222,21 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 			.with_single_cert(crt_chain, keys.swap_remove(0))
 			.with_context(|| "error setting crt/key pair")?;
 		server
-			.bind_rustls(&addr, tls_config)
-			.with_context(|| format!("unable to bind to https://{}", &addr))?
-			.run()
+			.bind_rustls(&addrs, tls_config)
+			.with_context(|| format!("unable to bind to https://{}", &addrs))?
 	} else {
 		log::warn!("TLS is not activated. Use only for development");
+		server
+	};
+
+	// bind to http if secure is false (default)
+	let server = if !secure {
 		server
 			.bind(&addr)
 			.with_context(|| format!("unable to bind to http://{}", &addr))?
 			.run()
+	} else {
+		server.run()
 	};
 
 	// wait for reload message in a separate thread as recv call is blocking
@@ -240,11 +251,13 @@ async fn serve(mut config: Config, addr: String) -> anyhow::Result<bool> {
 		executor::block_on(srv.stop(true))
 	});
 
-	log::info!(
-		"listening on http{}://{}",
-		if tls.is_some() { "s" } else { "" },
-		&addr
-	);
+	if !secure {
+		log::info!("listening on http://{}", &addr);
+	}
+	if tls.is_some() {
+		log::info!("listening on https://{}", &addrs);
+	}
+
 	server.await?;
 
 	// if the weak pointer can't upgrade then the reload recv thread is gone
@@ -275,7 +288,12 @@ fn main() -> anyhow::Result<()> {
 	// start actix main loop
 	let system = actix_web::rt::System::new();
 	loop {
-		let reloaded = system.block_on(serve(config.clone(), args.addr.clone()))?;
+		let reloaded = system.block_on(serve(
+			config.clone(),
+			args.secure,
+			args.addrs.clone(),
+			args.addr.clone(),
+		))?;
 		if reloaded {
 			log::info!("restart server");
 		} else {

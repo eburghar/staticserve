@@ -4,17 +4,25 @@ use std::path::Path;
 #[derive(FromArgs)]
 /// Static file server with ability to upload content and define dynamic routes
 pub struct Opts {
-	/// configuration file containing projects and gitlab connection parameters
+	/// configuration file containing projects and gitlab connection parameters (/etc/staticserve.yaml)
 	#[argh(option, short = 'c', default = "\"/etc/staticserve.yaml\".to_owned()")]
 	pub config: String,
 
-	/// more detailed output
+	/// more detailed output (false)
 	#[argh(switch, short = 'v')]
 	pub verbose: bool,
 
-	/// addr:port to bind to
-	#[argh(option, short = 'a', default = "\"0.0.0.0:8080\".to_owned()")]
+	/// addr:port to bind to (0.0.0.0:8080) without tls
+	#[argh(option, short = 'l', default = "\"0.0.0.0:8080\".to_owned()")]
 	pub addr: String,
+
+	/// addr:port to bind to (0.0.0.0:8443) when tls is used
+	#[argh(option, short = 'L', default = "\"0.0.0.0:8443\".to_owned()")]
+	pub addrs: String,
+
+	/// only bind to tls (when tls config is present in configuration file)
+	#[argh(switch, short = 'S')]
+	pub secure: bool,
 }
 
 /// copy of argh::from_env to insert command name and version in help text
