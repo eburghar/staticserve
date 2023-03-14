@@ -11,6 +11,7 @@ use crate::{
 use actix_cachecontrol_middleware::middleware::CacheHeaders;
 use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
+use actix_schemeredirect_middleware::middleware::SchemeRedirect;
 use actix_token_middleware::middleware::jwtauth::JwtAuth;
 use actix_web::{
 	dev::{ServiceRequest, ServiceResponse},
@@ -128,12 +129,35 @@ async fn serve(
 	let tls = config.tls.clone();
 
 	// initialize the state shared among routes and services
-	let state = AppState { config, tx };
+	let state = AppState {
+		config: config.clone(),
+		tx,
+	};
 
 	// build the server
 	let server = HttpServer::new(move || {
+		let tls = config.tls.as_ref();
+		// redirect only in dual protocoal and if a redirect config is provided
+		let redirect_service =
+			if let Some(redirect) = tls.filter(|_| !secure).and_then(|c| c.redirect.clone()) {
+				log::info!(
+					"redirect to https:{:?} for {:?} protocol(s)",
+					redirect.port.unwrap_or(443),
+					redirect.protocols
+				);
+				SchemeRedirect::new(
+					redirect.protocols,
+					tls.and_then(|o| o.hsts.clone()),
+					redirect.port,
+				)
+			} else {
+				// no redirection by default
+				SchemeRedirect::default()
+			};
+
 		let mut app = App::new()
 			.wrap(middleware::Logger::default())
+			.wrap(redirect_service)
 			.wrap(middleware::Compress::default())
 			.wrap(middleware::Condition::new(
 				state.config.cache.is_some(),
@@ -187,7 +211,7 @@ async fn serve(
 	});
 
 	// bind to http or https
-	let server = if let Some(ref tls) = tls {
+	let server = if let Some(tls) = &tls {
 		// Create tls config
 		let config = ServerConfig::builder()
 			.with_safe_defaults()
@@ -208,12 +232,12 @@ async fn serve(
 			rsa_private_keys(&mut BufReader::new(File::open(&tls.key)?))
 				.map_err(invalid_key)
 				// return an error if there is no key
-				.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
+				.and_then(|x| (!x.is_empty()).then_some(x).ok_or_else(no_key))
 				.or_else(|_| {
 					pkcs8_private_keys(&mut BufReader::new(File::open(&tls.key)?))
 						.map_err(invalid_key)
 						// return an error if there is no key
-						.and_then(|x| (!x.is_empty()).then(|| x).ok_or_else(no_key))
+						.and_then(|x| (!x.is_empty()).then_some(x).ok_or_else(no_key))
 				})?
 				.into_iter()
 				.map(PrivateKey)

@@ -24,23 +24,36 @@ It also supports SPA applications by serving specific static files based on path
 route expressions) that are listed int the `routes` dictionary. A default page with a default
 status code can also be provided in case no file nor a route match.
 
+`redirect` in `tls` section of configuration file allows to configure an automatic HTTPS
+redirection per protocol to deal with differences in dual stack deployment. Generally you use a
+reverse proxy with IPv4 while you expose your service directly with IPv6. Because some reverse
+proxy don't handle TLS encrypted upstream you can't send them a redirect, so you can disable
+it in that specific case.
+
+When `hsts` is provided in `tls` section, then [HTTP Strict Transport
+Security](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security)
+are sent according to the parameters.
+
 It uses the [fast rustls](https://jbp.io/2019/07/01/rustls-vs-openssl-performance.html) TLS
 implementation.
 
 ## Usage
 
 ```
-staticserve 0.6.0
+staticserve 0.8.0
 
-Usage: staticserve [-c <config>] [-v] [-a <addr>]
+Usage: staticserve [-c <config>] [-v] [-l <addr>] [-L <addrs>] [-S]
 
 Static file server with ability to upload content and define dynamic routes
 
 Options:
   -c, --config      configuration file containing projects and gitlab connection
-                    parameters
-  -v, --verbose     more detailed output
-  -a, --addr        addr:port to bind to
+                    parameters (/etc/staticserve.yaml)
+  -v, --verbose     more detailed output (false)
+  -l, --addr        addr:port to bind to (0.0.0.0:8080) without tls
+  -L, --addrs       addr:port to bind to (0.0.0.0:8443) when tls is used
+  -S, --secure      only bind to tls (when tls config is present in
+                    configuration file)
   --help            display usage information
 ```
 
@@ -57,6 +70,15 @@ default:
 tls:
   crt: /var/run/secrets/staticserve/tls.crt
   key: /var/run/secrets/staticserve/tls.key
+  # perform a redirection to https
+  redirect:
+    port: 443 # optional
+    protocols: both # both | ipv4 | ipv6 | none
+  # Strict-Transport-Security header
+  hsts:
+    duration: 300 # duration in s
+    include_subdomains: true
+    preload: false
 jwt:
   jwks: https://gitlab.com/-/jwks
   # only allows a job from a particular project running on a

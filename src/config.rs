@@ -1,4 +1,5 @@
 use actix_cachecontrol_middleware::data::CacheControl;
+use actix_schemeredirect_middleware::data::{Redirect, StrictTransportSecurity};
 use actix_token_middleware::data::Jwt;
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -11,6 +12,10 @@ pub struct Tls {
 	pub crt: PathBuf,
 	/// key path
 	pub key: PathBuf,
+	/// redirect configuration
+	pub redirect: Option<Redirect>,
+	/// hsts configuration
+	pub hsts: Option<StrictTransportSecurity>,
 }
 
 fn default_status() -> u16 {
@@ -56,7 +61,7 @@ impl Hooks {
 				if !args.is_empty() {
 					// enforce absolute exec path for security reason
 					if args[0].starts_with('/') {
-						let mut cmd = Command::new(&args[0]);
+						let mut cmd = Command::new(args[0]);
 						if args.len() > 1 {
 							cmd.args(&args[1..]);
 						}
@@ -101,7 +106,7 @@ pub struct Config {
 impl Config {
 	pub fn read(config: &str) -> Result<Config> {
 		// open configuration file
-		let file = File::open(&config).with_context(|| format!("Can't open {}", &config))?;
+		let file = File::open(config).with_context(|| format!("Can't open {}", &config))?;
 		// deserialize configuration
 		let config: Config =
 			serde_yaml::from_reader(file).with_context(|| format!("Can't read {}", &config))?;
