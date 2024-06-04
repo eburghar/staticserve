@@ -9,6 +9,7 @@ use crate::{
 };
 
 use actix_cachecontrol_middleware::middleware::CacheHeaders;
+use actix_cors::Cors;
 use actix_files::{Files, NamedFile};
 use actix_multipart::Multipart;
 use actix_schemeredirect_middleware::middleware::SchemeRedirect;
@@ -163,6 +164,7 @@ async fn serve(
 				state.config.cache.is_some(),
 				CacheHeaders::new(state.config.cache.clone()),
 			))
+			.wrap(Cors::permissive())
 			.app_data(Data::new(state.clone()));
 		// add upload service
 		if let Some(ref jwt) = state.config.jwt {
