@@ -1,6 +1,6 @@
 [package]
 name = "staticserve"
-version = "0.8.0"
+version = "0.8.1"
 authors = ["Éric BURGHARD <eric@itsufficient.me>"]
 edition = "2021"
 description = "A simple and fast async http(s) server for hosting static website (JAMSTACK) under kubernetes."
@@ -29,6 +29,7 @@ serde_yaml = "0.8"
 actix-token-middleware = "0.3"
 actix-cachecontrol-middleware = "0.2"
 actix-schemeredirect-middleware = "0.2"
+actix-cors = "0.7.0"
 
 [patch.crates-io]
 actix-schemeredirect-middleware = { git = "https://github.com/eburghar/actix-schemeredirect-middleware.git", branch = "master" }
